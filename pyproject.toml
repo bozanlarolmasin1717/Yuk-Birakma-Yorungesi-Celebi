@@ -1,0 +1,9 @@
+[project]
+name = "yuk-birakma-yorungesi-celebi"
+version = "0.1.0"
+description = "Çelebi İHA yük bırakma yörüngesi ve hedefleme görselleştirme arayüzü"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
