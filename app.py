@@ -18,9 +18,9 @@ from src.visualization.topdown_map import build_topdown_figure
 from src.visualization.trajectory_3d import build_3d_figure
 
 MODULE_OPTIONS = (
-    "7.1 · Balistik Hareket Denklemleri",
-    "7.2 · Hava Sürtünmesi ve Rüzgar",
-    "7.3 · Hedefleme Algoritması",
+    "7.1 · Temel Düşüş (Sürtünmesiz / Vakum)",
+    "7.2 · Rüzgar ve Hava Direnci Sapması (Cd)",
+    "7.3 · Hedefi Vurmak İçin Bırakma Noktası",
 )
 
 

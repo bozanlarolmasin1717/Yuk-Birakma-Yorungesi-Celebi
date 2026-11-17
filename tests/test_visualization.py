@@ -160,13 +160,13 @@ def test_module_selector_renders_71_72_and_73_independently() -> None:
     app_path = Path(__file__).resolve().parents[1] / "app.py"
     at = AppTest.from_file(app_path, default_timeout=20)
     at.run()
-    assert at.session_state["active_module"] == "7.3 · Hedefleme Algoritması"
+    assert at.session_state["active_module"] == "7.3 · Hedefi Vurmak İçin Bırakma Noktası"
 
-    at.radio(key="active_module").set_value("7.1 · Balistik Hareket Denklemleri").run()
+    at.radio(key="active_module").set_value("7.1 · Temel Düşüş (Sürtünmesiz / Vakum)").run()
     assert len(at.exception) == 0
     assert any("7.1 Sürtünmesiz Düşüş Menzili" in m.value for m in at.markdown)
 
-    at.radio(key="active_module").set_value("7.2 · Hava Sürtünmesi ve Rüzgar").run()
+    at.radio(key="active_module").set_value("7.2 · Rüzgar ve Hava Direnci Sapması (Cd)").run()
     assert len(at.exception) == 0
     assert any("7.2 Vakuma Göre Toplam Sapma" in m.value for m in at.markdown)
 
