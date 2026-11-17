@@ -6,7 +6,13 @@ bırakma noktası üretir. Arkadaşınızın koordinat/fizik motoru tamamlandı�
 """
 
 import math
-from src.visualization.geometry import heading_basis, wind_from_to_vector
+from src.targeting import ForwardDropResult, solve_release_point
+from src.visualization.geometry import (
+    build_uav_track,
+    compute_vacuum_trajectory,
+    heading_basis,
+    wind_from_to_vector,
+)
 from src.visualization.schemas import (
     DropScenarioView,
     Point3D,
@@ -14,49 +20,6 @@ from src.visualization.schemas import (
     SimulationInputs,
     TrajectorySeries,
 )
-
-
-def _compute_vacuum_from(
-    release: Point3D,
-    vx0: float,
-    vy0: float,
-    gravity: float,
-    samples: int = 60,
-) -> TrajectorySeries:
-    """Referans vakum (hava direncisiz) parabolik yörüngesini üretir."""
-    t_flight = math.sqrt(2.0 * max(release.z, 0.1) / max(gravity, 0.1))
-    xs: list[float] = []
-    ys: list[float] = []
-    zs: list[float] = []
-    ts: list[float] = []
-    speeds: list[float] = []
-
-    for i in range(samples + 1):
-        t = t_flight * i / samples
-        x = release.x + vx0 * t
-        y = release.y + vy0 * t
-        z = max(0.0, release.z - 0.5 * gravity * t * t)
-        vz = -gravity * t
-        xs.append(x)
-        ys.append(y)
-        zs.append(z)
-        ts.append(t)
-        speeds.append(math.sqrt(vx0 * vx0 + vy0 * vy0 + vz * vz))
-
-    impact = Point3D(xs[-1], ys[-1], 0.0)
-    horiz_range = math.hypot(impact.x - release.x, impact.y - release.y)
-    return TrajectorySeries(
-        label="Vakum Referansı (7.1)",
-        x=tuple(xs),
-        y=tuple(ys),
-        z=tuple(zs),
-        t=tuple(ts),
-        speed=tuple(speeds),
-        impact_point=impact,
-        flight_time=t_flight,
-        horizontal_range=horiz_range,
-        is_reference=True,
-    )
 
 
 def _integrate_demo_drag(
@@ -136,64 +99,94 @@ def _integrate_demo_drag(
 
 
 def build_demo_scenario(inputs: SimulationInputs) -> DropScenarioView:
-    """Kullanıcı girdilerine tepki veren geçici demo senaryo verisi üretir."""
-    (hx, hy), (rx_axis, ry_axis) = heading_basis(inputs.uav_heading_deg)
+    """Geçici ileri sürükleme+rüzgar simülatörü üzerinde gerçek 7.3 çözücüyü çalıştırır."""
+    (hx, hy), _ = heading_basis(inputs.uav_heading_deg)
     vx0 = inputs.uav_speed_mps * hx
     vy0 = inputs.uav_speed_mps * hy
     wx, wy = wind_from_to_vector(inputs.wind_speed_mps, inputs.wind_from_deg)
 
-    rel_xs, rel_ys, zs, ts, speeds = _integrate_demo_drag(inputs, vx0, vy0, wx, wy)
-    dx_total = rel_xs[-1]
-    dy_total = rel_ys[-1]
+    # İleri fizik yatayda öteleme bağımsız olsa da, 7.3 çözücüyü gerçek kara-kutu
+    # sözleşmesiyle doğrulamak için tam ForwardSimulatorFn imzasıyla sarıyoruz.
+    rel_xs, rel_ys, rel_zs, rel_ts, rel_speeds = _integrate_demo_drag(inputs, vx0, vy0, wx, wy)
 
-    release_point = Point3D(
-        x=inputs.target_x_m - dx_total,
-        y=inputs.target_y_m - dy_total,
-        z=inputs.release_altitude_m,
-    )
+    def _forward_drop_demo(rx: float, ry: float, rz: float) -> ForwardDropResult:
+        if abs(rz - inputs.release_altitude_m) < 1e-9:
+            xs = tuple(rx + dx for dx in rel_xs)
+            ys = tuple(ry + dy for dy in rel_ys)
+            zs = tuple(rel_zs)
+            ts = tuple(rel_ts)
+            spds = tuple(rel_speeds)
+        else:
+            sub_inputs = SimulationInputs(
+                uav_speed_mps=inputs.uav_speed_mps,
+                uav_heading_deg=inputs.uav_heading_deg,
+                release_altitude_m=rz,
+                payload_mass_kg=inputs.payload_mass_kg,
+                payload_area_m2=inputs.payload_area_m2,
+                drag_coefficient=inputs.drag_coefficient,
+                payload_shape=inputs.payload_shape,
+                wind_speed_mps=inputs.wind_speed_mps,
+                wind_from_deg=inputs.wind_from_deg,
+                target_x_m=inputs.target_x_m,
+                target_y_m=inputs.target_y_m,
+                gravity_mps2=inputs.gravity_mps2,
+                air_density_kgm3=inputs.air_density_kgm3,
+            )
+            lxs, lys, lzs, lts, lspds = _integrate_demo_drag(sub_inputs, vx0, vy0, wx, wy)
+            xs = tuple(rx + dx for dx in lxs)
+            ys = tuple(ry + dy for dy in lys)
+            zs = tuple(lzs)
+            ts = tuple(lts)
+            spds = tuple(lspds)
+
+        return ForwardDropResult(
+            impact_point=(xs[-1], ys[-1], zs[-1]),
+            flight_time=ts[-1],
+            x=xs,
+            y=ys,
+            z=zs,
+            t=ts,
+            speed=spds,
+        )
+
     target_point = Point3D(inputs.target_x_m, inputs.target_y_m, 0.0)
+    solution, forward_res = solve_release_point(
+        simulate_fn=_forward_drop_demo,
+        target_point=(target_point.x, target_point.y, target_point.z),
+        release_altitude_m=inputs.release_altitude_m,
+        uav_speed_mps=inputs.uav_speed_mps,
+        uav_heading_deg=inputs.uav_heading_deg,
+        gravity_mps2=inputs.gravity_mps2,
+    )
 
-    actual_x = tuple(release_point.x + dx for dx in rel_xs)
-    actual_y = tuple(release_point.y + dy for dy in rel_ys)
-    actual_impact = Point3D(actual_x[-1], actual_y[-1], 0.0)
+    release_point = Point3D(*solution.release_point)
+    actual_impact = Point3D(*forward_res.impact_point)
 
     actual_series = TrajectorySeries(
         label="Hava Sürtünmeli + Rüzgarlı (Demo)",
-        x=actual_x,
-        y=actual_y,
-        z=tuple(zs),
-        t=tuple(ts),
-        speed=tuple(speeds),
+        x=forward_res.x,
+        y=forward_res.y,
+        z=forward_res.z,
+        t=forward_res.t,
+        speed=forward_res.speed,
         impact_point=actual_impact,
-        flight_time=ts[-1],
+        flight_time=forward_res.flight_time,
         horizontal_range=math.hypot(actual_impact.x - release_point.x, actual_impact.y - release_point.y),
         is_reference=False,
     )
 
-    vacuum_series = _compute_vacuum_from(release_point, vx0, vy0, inputs.gravity_mps2)
+    vacuum_series = compute_vacuum_trajectory(release_point, vx0, vy0, inputs.gravity_mps2)
 
-    lead_distance_m = (target_point.x - release_point.x) * hx + (target_point.y - release_point.y) * hy
-    lateral_offset_m = (release_point.x - target_point.x) * rx_axis + (release_point.y - target_point.y) * ry_axis
-    predicted_error_m = math.hypot(actual_impact.x - target_point.x, actual_impact.y - target_point.y)
     drift_from_vacuum_m = math.hypot(
         actual_impact.x - vacuum_series.impact_point.x,
         actual_impact.y - vacuum_series.impact_point.y,
     )
 
-    min_s = min(0.0, lead_distance_m)
-    max_s = max(0.0, lead_distance_m, vacuum_series.horizontal_range)
-    uav_track = (
-        Point3D(
-            release_point.x + (min_s - 40.0) * hx,
-            release_point.y + (min_s - 40.0) * hy,
-            inputs.release_altitude_m,
-        ),
-        release_point,
-        Point3D(
-            release_point.x + (max_s + 40.0) * hx,
-            release_point.y + (max_s + 40.0) * hy,
-            inputs.release_altitude_m,
-        ),
+    uav_track = build_uav_track(
+        release_point=release_point,
+        heading_deg=inputs.uav_heading_deg,
+        lead_distance_m=solution.lead_distance_m,
+        vacuum_range_m=vacuum_series.horizontal_range,
     )
 
     return DropScenarioView(
@@ -205,9 +198,15 @@ def build_demo_scenario(inputs: SimulationInputs) -> DropScenarioView:
         release_solution=ReleaseSolutionView(
             release_point=release_point,
             target_point=target_point,
-            lead_distance_m=lead_distance_m,
-            lateral_offset_m=lateral_offset_m,
-            predicted_error_m=predicted_error_m,
+            lead_distance_m=solution.lead_distance_m,
+            lateral_offset_m=solution.lateral_offset_m,
+            predicted_error_m=solution.predicted_error_m,
+            vacuum_lead_distance_m=solution.vacuum_lead_distance_m,
+            fixed_track_lead_m=solution.fixed_track_lead_m,
+            fixed_track_miss_m=solution.fixed_track_miss_m,
+            solver_iterations=solution.iterations,
+            solver_converged=solution.converged,
+            solver_method=solution.method,
         ),
         drift_from_vacuum_m=drift_from_vacuum_m,
         is_demo_mode=True,

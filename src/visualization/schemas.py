@@ -71,6 +71,12 @@ class ReleaseSolutionView:
     lead_distance_m: float
     lateral_offset_m: float
     predicted_error_m: float
+    vacuum_lead_distance_m: float = 0.0
+    fixed_track_lead_m: float = 0.0
+    fixed_track_miss_m: float = 0.0
+    solver_iterations: int = 1
+    solver_converged: bool = True
+    solver_method: str = ""
 
 
 @dataclass(frozen=True)

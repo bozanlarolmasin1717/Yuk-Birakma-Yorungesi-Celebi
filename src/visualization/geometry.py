@@ -67,3 +67,76 @@ def format_lead_distance(lead_distance_m: float) -> str:
     if lead_distance_m >= 0.0:
         return f"{lead_distance_m:.1f} m önce"
     return f"{abs(lead_distance_m):.1f} m sonra (ters rüzgar)"
+
+
+def compute_vacuum_trajectory(
+    release: Point3D,
+    vx0: float,
+    vy0: float,
+    gravity: float,
+    vz0: float = 0.0,
+    samples: int = 60,
+) -> TrajectorySeries:
+    """7.1 referans vakum (hava direncisiz) parabolik yörüngesini üretir."""
+    dz = max(release.z, 0.1)
+    g = max(gravity, 0.1)
+    discriminant = max(vz0 * vz0 + 2.0 * g * dz, 0.0)
+    t_flight = (vz0 + math.sqrt(discriminant)) / g
+
+    xs: list[float] = []
+    ys: list[float] = []
+    zs: list[float] = []
+    ts: list[float] = []
+    speeds: list[float] = []
+
+    for i in range(samples + 1):
+        t = t_flight * i / samples
+        x = release.x + vx0 * t
+        y = release.y + vy0 * t
+        z = max(0.0, release.z + vz0 * t - 0.5 * g * t * t)
+        vz = vz0 - g * t
+        xs.append(x)
+        ys.append(y)
+        zs.append(z)
+        ts.append(t)
+        speeds.append(math.sqrt(vx0 * vx0 + vy0 * vy0 + vz * vz))
+
+    impact = Point3D(xs[-1], ys[-1], 0.0)
+    horiz_range = math.hypot(impact.x - release.x, impact.y - release.y)
+    return TrajectorySeries(
+        label="Vakum Referansı (7.1)",
+        x=tuple(xs),
+        y=tuple(ys),
+        z=tuple(zs),
+        t=tuple(ts),
+        speed=tuple(speeds),
+        impact_point=impact,
+        flight_time=t_flight,
+        horizontal_range=horiz_range,
+        is_reference=True,
+    )
+
+
+def build_uav_track(
+    release_point: Point3D,
+    heading_deg: float,
+    lead_distance_m: float,
+    vacuum_range_m: float,
+) -> tuple[Point3D, ...]:
+    """Bırakma, hedef ve vakum düşüşü boyunca İHA yaklaşma/ayrılma hattını üretir."""
+    (hx, hy), _ = heading_basis(heading_deg)
+    min_s = min(0.0, lead_distance_m)
+    max_s = max(0.0, lead_distance_m, vacuum_range_m)
+    return (
+        Point3D(
+            release_point.x + (min_s - 40.0) * hx,
+            release_point.y + (min_s - 40.0) * hy,
+            release_point.z,
+        ),
+        release_point,
+        Point3D(
+            release_point.x + (max_s + 40.0) * hx,
+            release_point.y + (max_s + 40.0) * hy,
+            release_point.z,
+        ),
+    )
