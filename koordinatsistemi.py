@@ -93,3 +93,4 @@ class simulationResult:
     impact_velocity: np.ndarray
     trajectory: np.ndarray
     
+    
