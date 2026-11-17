@@ -1,4 +1,4 @@
-"""Ana ekran başlık, asimetrik KPI kartları ve statik dışa aktarım panelleri."""
+"""Ana ekran başlık, modül bekleme ekranları, 7.3 özet kartları ve rapor dışa aktarımı."""
 
 import streamlit as st
 from src.ui.theme import SPACE_1, SPACE_2, SPACE_3, ThemePalette, svg_icon
@@ -7,13 +7,25 @@ from src.visualization.geometry import format_lead_distance
 from src.visualization.schemas import DropScenarioView
 
 
-def render_header(scenario: DropScenarioView, palette: ThemePalette) -> None:
-    """Sayfa üst başlığını ve veri kaynağı durum rozetini çizer."""
-    badge_text = (
-        "7.3 Hedefleme Aktif · Geçici İleri Fizik"
-        if scenario.is_demo_mode
-        else "7.3 Hedefleme + Fizik Motoru Bağlı"
-    )
+def render_header(active_module: str, scenario: DropScenarioView | None, palette: ThemePalette) -> None:
+    """Seçili modüle göre sade sayfa başlığını ve durum rozetini çizer."""
+    if active_module.startswith("7.3"):
+        badge_text = (
+            "7.3 Aktif · Geçici İleri Fizik Kullanılıyor"
+            if (scenario is None or scenario.is_demo_mode)
+            else "7.3 Aktif · Fizik Motoru Bağlı"
+        )
+        subtitle = (
+            "Hedefi vurmak için yükü hedeften kaç metre önce (ve rüzgar varsa kaç metre yandan) "
+            "bırakmanız gerektiğini hesaplar ve canlı gösterir."
+        )
+    elif active_module.startswith("7.1"):
+        badge_text = "7.1 · Arkadaşından Bekleniyor"
+        subtitle = "İlk hız, bırakılma irtifası ve yerçekimi ile temel (sürtünmesiz) düşüş yörüngesi."
+    else:
+        badge_text = "7.2 · Arkadaşından Bekleniyor"
+        subtitle = "Yük şekli (Cd) ve rüzgarın yönü/şiddetine göre oluşan sapma modeli."
+
     theme_icon = svg_icon("sun" if not palette.is_dark else "moon", palette.primary, 15)
     target_icon = svg_icon("target", palette.accent, 15)
 
@@ -21,13 +33,9 @@ def render_header(scenario: DropScenarioView, palette: ThemePalette) -> None:
         f"""
         <header class="celebi-header">
           <div>
-            <div class="celebi-kicker">Proje 7 · Balistik Bırakma Görselleştirme</div>
-            <h1 style="margin:0;">Yük Bırakma Yörüngesi ve Hedefleme Analizi</h1>
-            <p class="celebi-subtitle">
-              Hareket halindeki İHA'dan bırakılan yükün vakum referansı ile hava sürtünmesi (Cd)
-              ve rüzgar etkileri altındaki yörüngesini karşılaştırır; hedefi vurmak için gereken
-              bırakma noktasını SI birimlerinde görselleştirir.
-            </p>
+            <div class="celebi-kicker">Çelebi İHA · Yük Bırakma Simülatörü</div>
+            <h1 style="margin:0;">{active_module}</h1>
+            <p class="celebi-subtitle">{subtitle}</p>
           </div>
           <div style="display:flex; gap:{SPACE_1}px; flex-wrap:wrap;">
             <span class="celebi-badge">{theme_icon} { "Açık Tema" if not palette.is_dark else "Koyu Tema" }</span>
@@ -39,23 +47,74 @@ def render_header(scenario: DropScenarioView, palette: ThemePalette) -> None:
     )
 
 
+def render_module_placeholder(module_code: str, palette: ThemePalette) -> None:
+    """7.1 ve 7.2 modülleri için arkadaşının kodu gelene kadar sade bilgi kartı gösterir."""
+    if module_code == "7.1":
+        title = "7.1 Balistik Hareket Denklemleri Henüz Bağlanmadı"
+        goal = (
+            "Bu bölümde İHA'nın ilk hızı, bırakılma irtifası ve yerçekimi ivmesi kullanılarak "
+            "temel düşüş yörüngesi çizilecek."
+        )
+        ready = "koordinatsistemi.py içinde ENU koordinat ekseni, UavState ve simulationResult tanımları hazır."
+        pending = "Arkadaşının yazacağı temel ileri balistik fonksiyonu (simulate_drop) bekleniyor."
+    else:
+        title = "7.2 Hava Sürtünmesi ve Rüzgar Modeli Henüz Bağlanmadı"
+        goal = (
+            "Bu bölümde yükün sürtünme katsayısı (Cd) ile rüzgar yönü ve şiddetine göre "
+            "oluşan sapma miktarı hesaplanıp gösterilecek."
+        )
+        ready = (
+            "koordinatsistemi.py içinde payloadParameters (kütle, Cd, kesit alanı) ve "
+            "environmentParameters (rüzgar hızı, yönü, hava yoğunluğu) tanımları hazır."
+        )
+        pending = "Arkadaşının sürükleme kuvveti ve rüzgar etkili sayısal yörünge motoru bekleniyor."
+
+    st.markdown(
+        f"""
+        <div class="celebi-card celebi-card-featured" style="margin-top:{SPACE_2}px; max-width: 78ch;">
+          <div class="celebi-metric-label">
+            {svg_icon("trajectory", palette.accent, 18)}
+            <span>Arkadaşının Kısmı · Entegrasyona Hazır</span>
+          </div>
+          <h2 style="margin-top:{SPACE_1}px;">{title}</h2>
+          <p style="font-size:0.95rem; color:{palette.text_primary}; margin-bottom:{SPACE_2}px;">
+            {goal}
+          </p>
+          <div style="font-size:0.875rem; line-height:1.7; color:{palette.text_secondary};">
+            <strong>Hazır olanlar:</strong> {ready}<br/>
+            <strong>Beklenen:</strong> {pending}<br/>
+            <strong>Nasıl bağlanacak:</strong> İleri fizik fonksiyonu geldiğinde yalnızca
+            <code>src/integration/adapter.py</code> üzerinden bağlanıp bu ekran otomatik açılacak.
+            Şimdilik çalışan hedefleme ekranını görmek için üstten <strong>7.3 · Hedefleme Algoritması</strong>
+            seçeneğini kullanabilirsin.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_kpis(scenario: DropScenarioView, palette: ThemePalette) -> None:
-    """Kırık simetrili (asimetrik) temel bırakma ve sapma kartlarını sunar."""
+    """7.3 Hedefleme için sade ve doğrudan anlaşılır cevap kartlarını çizer."""
     rel = scenario.release_solution
     act = scenario.actual_trajectory
-    vac = scenario.vacuum_trajectory
+    inp = scenario.inputs
 
-    # Asimetrik ızgara: Sol vurgulu ana cevap (7.3), sağda iki destekleyici teknik blok
-    col_primary, col_drift, col_flight = st.columns([1.65, 1.0, 1.0], gap="medium")
+    col_primary, col_sidewind, col_flight = st.columns([1.7, 1.0, 1.0], gap="medium")
 
-    lead_text = format_lead_distance(rel.lead_distance_m)
-
-    fixed_note = (
-        f"<br/>Doğrudan hedef hattında: <span class='celebi-mono'>{format_lead_distance(rel.fixed_track_lead_m)}</span> "
-        f"(yan sapma: <span class='celebi-mono'>{rel.fixed_track_miss_m:.1f} m</span>)"
-        if rel.fixed_track_miss_m > 0.1
-        else ""
-    )
+    if rel.lead_distance_m >= 0.0:
+        headline = f"Hedefin {rel.lead_distance_m:.1f} m önünden bırak"
+        plain_explain = (
+            f"İHA {inp.uav_speed_mps:.0f} m/s hızla {inp.release_altitude_m:.0f} m yükseklikten uçarken, "
+            f"yükü hedefin tam tepesine gelmeden <strong>{rel.lead_distance_m:.1f} metre önce</strong> "
+            f"bırakırsan rüzgar ve hava direnci altında tam hedefe iner."
+        )
+    else:
+        headline = f"Hedefi {abs(rel.lead_distance_m):.1f} m geçince bırak"
+        plain_explain = (
+            f"Karşıdan esen rüzgar ({inp.wind_speed_mps:.1f} m/s) yükü geriye ittiği için "
+            f"hedefi <strong>{abs(rel.lead_distance_m):.1f} metre geçtikten sonra</strong> bırakman gerekir."
+        )
 
     with col_primary:
         st.markdown(
@@ -63,33 +122,39 @@ def render_kpis(scenario: DropScenarioView, palette: ThemePalette) -> None:
             <div class="celebi-card celebi-card-featured">
               <div class="celebi-metric-label">
                 {svg_icon("target", palette.accent, 17)}
-                <span>7.3 İdeal Bırakma Mesafesi (Hedefin Öncesi)</span>
+                <span>7.3 Soru: "Hedefi vurmak için yükü kaç metre önce bırakmalıyım?"</span>
               </div>
-              <div class="celebi-metric-value">{lead_text}</div>
-              <div class="celebi-metric-note">
-                Bırakma (ENU):
-                <span class="celebi-mono">X={rel.release_point.x:.1f} m, Y={rel.release_point.y:.1f} m, Z={rel.release_point.z:.0f} m</span>
-                · Yanal kayma: <span class="celebi-mono">{rel.lateral_offset_m:+.1f} m</span>
-                · Vakum hesabı: <span class="celebi-mono">{rel.vacuum_lead_distance_m:.1f} m önce</span>
-                {fixed_note}
+              <div class="celebi-metric-value">{headline}</div>
+              <div class="celebi-metric-note" style="line-height:1.5;">
+                {plain_explain}
               </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col_drift:
+    if abs(rel.lateral_offset_m) < 0.2:
+        side_headline = "Tam rota üstünde"
+        side_note = "Yan rüzgar sapması yok; İHA doğrudan hedef hizasından geçebilir."
+    else:
+        side_dir = "sağından" if rel.lateral_offset_m > 0 else "solundan"
+        side_headline = f"{abs(rel.lateral_offset_m):.1f} m {side_dir} geç"
+        side_note = (
+            f"Yan rüzgarı dengelemek için rotayı hedefin {abs(rel.lateral_offset_m):.1f} m {side_dir} geçir. "
+            f"Doğrudan hedef üstünden uçulursa {rel.fixed_track_miss_m:.1f} m yandan sapar."
+        )
+
+    with col_sidewind:
         st.markdown(
             f"""
             <div class="celebi-card">
               <div class="celebi-metric-label">
                 {svg_icon("wind", palette.primary, 17)}
-                <span>7.2 Sürtünme + Rüzgar Sapması</span>
+                <span>Yan Rüzgar Düzeltmesi</span>
               </div>
-              <div class="celebi-metric-value">{scenario.drift_from_vacuum_m:.1f} m</div>
-              <div class="celebi-metric-note">
-                Vakum menzili: <span class="celebi-mono">{vac.horizontal_range:.1f} m</span> ·
-                Gerçek menzil: <span class="celebi-mono">{act.horizontal_range:.1f} m</span>
+              <div class="celebi-metric-value">{side_headline}</div>
+              <div class="celebi-metric-note" style="line-height:1.45;">
+                {side_note}
               </div>
             </div>
             """,
@@ -102,12 +167,13 @@ def render_kpis(scenario: DropScenarioView, palette: ThemePalette) -> None:
             <div class="celebi-card">
               <div class="celebi-metric-label">
                 {svg_icon("trajectory", palette.primary, 17)}
-                <span>7.1 Uçuş Süresi ve Çarpma Hızı</span>
+                <span>Düşüş Süresi ve İniş Hızı</span>
               </div>
-              <div class="celebi-metric-value">{act.flight_time:.2f} s</div>
-              <div class="celebi-metric-note">
-                Vakum süresi: <span class="celebi-mono">{vac.flight_time:.2f} s</span> ·
-                Çarpma hızı: <span class="celebi-mono">{act.speed[-1]:.1f} m/s</span>
+              <div class="celebi-metric-value">{act.flight_time:.2f} sn</div>
+              <div class="celebi-metric-note" style="line-height:1.45;">
+                Bırakma sonrası yere ulaşma süresi.<br/>
+                Yere çarpma hızı: <span class="celebi-mono">{act.speed[-1]:.1f} m/s</span>
+                · Bırakma ENU: <span class="celebi-mono">({rel.release_point.x:.0f}, {rel.release_point.y:.0f}) m</span>
               </div>
             </div>
             """,
@@ -116,7 +182,7 @@ def render_kpis(scenario: DropScenarioView, palette: ThemePalette) -> None:
 
 
 def render_export_and_notes(scenario: DropScenarioView, palette: ThemePalette) -> None:
-    """Statik Matplotlib rapor indirme ve senaryo özet panelini çizer."""
+    """Statik Matplotlib rapor indirme ve 7.3 senaryo özet panelini çizer."""
     rel = scenario.release_solution
     inp = scenario.inputs
 
@@ -125,17 +191,18 @@ def render_export_and_notes(scenario: DropScenarioView, palette: ThemePalette) -
         <div class="celebi-card" style="margin-bottom:{SPACE_2}px;">
           <div class="celebi-metric-label">
             {svg_icon("download", palette.primary, 17)}
-            <span>Rapor Çıktısı ve Senaryo Özeti</span>
+            <span>7.3 Rapor Çıktısı ve Senaryo Özeti</span>
           </div>
           <p style="font-size:0.875rem; color:{palette.text_secondary}; margin-bottom:{SPACE_2}px;">
-            Etkileşimli Plotly grafiklerine ek olarak, sunum ve teknik raporlar için 3 panelli
-            yüksek çözünürlüklü Matplotlib özet görselini dışa aktarabilirsiniz.
+            Sunum ve teknik raporlar için 3 panelli yüksek çözünürlüklü özet görselini
+            PNG veya vektör SVG olarak indirebilirsin.
           </p>
-          <div style="font-size:0.85rem; line-height:1.65; color:{palette.text_primary};">
+          <div style="font-size:0.85rem; line-height:1.7; color:{palette.text_primary};">
+            <strong>Sonuç:</strong> {format_lead_distance(rel.lead_distance_m)}<br/>
             <strong>Yük:</strong> {inp.payload_shape} (Cd={inp.drag_coefficient:.2f}, {inp.payload_mass_kg:.1f} kg)<br/>
-            <strong>İHA:</strong> {inp.uav_speed_mps:.1f} m/s @ {inp.release_altitude_m:.0f} m irtifa, {inp.uav_heading_deg:.0f}° yön<br/>
+            <strong>İHA:</strong> {inp.uav_speed_mps:.1f} m/s · {inp.release_altitude_m:.0f} m yükseklik · {inp.uav_heading_deg:.0f}° istikamet<br/>
             <strong>Rüzgar:</strong> {inp.wind_speed_mps:.1f} m/s ({inp.wind_from_deg:.0f}° yönünden)<br/>
-            <strong>Hedef Sapması:</strong> <span class="celebi-mono">{rel.predicted_error_m:.4f} m</span>
+            <strong>Hedefleme Hatası:</strong> <span class="celebi-mono">{rel.predicted_error_m:.4f} m</span>
             ({rel.solver_method}, {rel.solver_iterations} adım)
           </div>
         </div>
@@ -148,7 +215,7 @@ def render_export_and_notes(scenario: DropScenarioView, palette: ThemePalette) -
         st.download_button(
             label="PNG Rapor İndir (220 DPI)",
             data=lambda: export_summary_figure_bytes(scenario, palette, fmt="png"),
-            file_name="celebi_yorunge_ozeti.png",
+            file_name="celebi_7_3_hedefleme_ozeti.png",
             mime="image/png",
             width="stretch",
         )
@@ -156,7 +223,7 @@ def render_export_and_notes(scenario: DropScenarioView, palette: ThemePalette) -
         st.download_button(
             label="SVG Vektör İndir",
             data=lambda: export_summary_figure_bytes(scenario, palette, fmt="svg"),
-            file_name="celebi_yorunge_ozeti.svg",
+            file_name="celebi_7_3_hedefleme_ozeti.svg",
             mime="image/svg+xml",
             width="stretch",
         )
@@ -165,11 +232,10 @@ def render_export_and_notes(scenario: DropScenarioView, palette: ThemePalette) -
         st.markdown(
             f"""
             <div style="font-size:0.85rem; color:{palette.text_secondary}; padding:{SPACE_1}px 0;">
-              <strong>7.3 Hedefleme Algoritması</strong> aktif olarak <code>src/targeting/</code> üzerinden
-              çalışmaktadır. İleri fizik tarafı şu an <code>src/integration/demo_provider.py</code>
-              ile simüle edilir; arkadaşınızın <code>7.1 + 7.2</code> motoru hazır olduğunda
-              <code>src/integration/adapter.py</code> içindeki <code>build_scenario_from_friend_physics</code>
-              çağrısıyla doğrudan bağlanır.
+              <strong>7.3 Hedefleme Algoritması</strong> <code>src/targeting/</code> altında gerçek olarak
+              çalışmaktadır. İleri fizik şimdilik <code>src/integration/demo_provider.py</code> ile
+              üretilir; arkadaşının <code>7.1 + 7.2</code> fizik motoru geldiğinde
+              <code>src/integration/adapter.py</code> üzerinden bağlanır.
             </div>
             """,
             unsafe_allow_html=True,

@@ -42,6 +42,7 @@ def export_summary_figure_bytes(
     scenario: DropScenarioView,
     palette: ThemePalette,
     fmt: str = "png",
+    show_vacuum_reference: bool = False,
 ) -> bytes:
     """3 panelli (3B Yörünge, Yandan Profil, Kuşbakışı) statik rapor görseli üretir."""
     vac = scenario.vacuum_trajectory
@@ -52,9 +53,9 @@ def export_summary_figure_bytes(
     fig = plt.figure(figsize=(15, 5.2), dpi=220, facecolor=palette.bg_surface)
     fig.suptitle(
         (
-            f"Çelebi Yük Bırakma Analizi  |  "
-            f"Bırakma Mesafesi: {format_lead_distance(scenario.release_solution.lead_distance_m)}  |  "
-            f"Sapma: {scenario.drift_from_vacuum_m:.1f} m"
+            f"Çelebi 7.3 Hedefleme Analizi  |  "
+            f"{format_lead_distance(scenario.release_solution.lead_distance_m)}  |  "
+            f"Yanal kayma: {scenario.release_solution.lateral_offset_m:+.1f} m"
         ),
         color=palette.text_primary,
         fontsize=12,
@@ -63,10 +64,15 @@ def export_summary_figure_bytes(
     )
 
     # 1) 3D panel
-    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(vac, act, tgt)
+    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
+        vac if show_vacuum_reference else act,
+        act,
+        tgt,
+    )
     ax3d = fig.add_subplot(1, 3, 1, projection="3d", facecolor=palette.bg_surface)
-    ax3d.plot(vac.x, vac.y, vac.z, linestyle="--", color=palette.reference, linewidth=1.6, label="Vakum")
-    ax3d.plot(act.x, act.y, act.z, color=palette.accent, linewidth=2.4, label="Cd + Rüzgar")
+    if show_vacuum_reference:
+        ax3d.plot(vac.x, vac.y, vac.z, linestyle="--", color=palette.reference, linewidth=1.6, label="Sürtünmesiz")
+    ax3d.plot(act.x, act.y, act.z, color=palette.accent, linewidth=2.4, label="Yük Yörüngesi")
     ax3d.scatter([rel.x], [rel.y], [rel.z], color=palette.primary, marker="D", s=36, label="Bırakma")
     ax3d.scatter([tgt.x], [tgt.y], [0.0], color=palette.accent, marker="x", s=45, label="Hedef")
     ax3d.set_xlim(x_min, x_max)
@@ -91,8 +97,9 @@ def export_summary_figure_bytes(
     act_s = project_along_heading(act.x, act.y, rel, heading)
     tgt_s = project_along_heading((tgt.x,), (tgt.y,), rel, heading)[0]
 
-    ax_side.plot(vac_s, vac.z, linestyle="--", color=palette.reference, linewidth=1.6, label="Vakum")
-    ax_side.plot(act_s, act.z, color=palette.accent, linewidth=2.4, label="Cd + Rüzgar")
+    if show_vacuum_reference:
+        ax_side.plot(vac_s, vac.z, linestyle="--", color=palette.reference, linewidth=1.6, label="Sürtünmesiz")
+    ax_side.plot(act_s, act.z, color=palette.accent, linewidth=2.4, label="Yük Yörüngesi")
     ax_side.scatter([0.0, tgt_s], [rel.z, 0.0], color=[palette.primary, palette.accent], zorder=5)
     ax_side.vlines(0.0, 0.0, rel.z, colors=palette.primary, linestyles="dotted", linewidth=1.2)
     ax_side.set_title("Yandan Profil (İrtifa – Menzil)", fontsize=10)
@@ -108,8 +115,9 @@ def export_summary_figure_bytes(
     cx15, cy15 = circle_points(tgt.x, tgt.y, 15.0)
     ax_top.plot(cx5, cy5, color=palette.border, linewidth=1.0)
     ax_top.plot(cx15, cy15, color=palette.border, linestyle=":", linewidth=1.0)
-    ax_top.plot(vac.x, vac.y, linestyle="--", color=palette.reference, linewidth=1.5, label="Vakum")
-    ax_top.plot(act.x, act.y, color=palette.accent, linewidth=2.4, label="Cd + Rüzgar")
+    if show_vacuum_reference:
+        ax_top.plot(vac.x, vac.y, linestyle="--", color=palette.reference, linewidth=1.5, label="Sürtünmesiz")
+    ax_top.plot(act.x, act.y, color=palette.accent, linewidth=2.4, label="Yük İzi")
     ax_top.scatter([rel.x], [rel.y], color=palette.primary, marker="D", s=38, zorder=5, label="Bırakma")
     ax_top.scatter([tgt.x], [tgt.y], color=palette.accent, marker="x", s=50, zorder=5, label="Hedef")
     ax_top.set_xlim(x_min, x_max)

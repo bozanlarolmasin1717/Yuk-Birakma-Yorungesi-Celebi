@@ -84,7 +84,7 @@ def build_scenario_from_friend_physics(
         speeds = (inputs.uav_speed_mps, inputs.uav_speed_mps)
 
     actual_series = TrajectorySeries(
-        label="Hava Sürtünmeli + Rüzgarlı (7.2)",
+        label="Gerçekçi (Cd + Rüzgar)",
         x=xs,
         y=ys,
         z=zs,

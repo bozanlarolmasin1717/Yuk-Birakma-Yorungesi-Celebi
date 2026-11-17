@@ -20,8 +20,12 @@ def _trajectory_hover_text(series: TrajectorySeries) -> list[str]:
     ]
 
 
-def build_3d_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Figure:
-    """3B ENU uzayında yörünge karşılaştırmasını ve bırakma/hedef noktalarını çizer."""
+def build_3d_figure(
+    scenario: DropScenarioView,
+    palette: ThemePalette,
+    show_vacuum_reference: bool = False,
+) -> go.Figure:
+    """3B ENU uzayında yörünge, bırakma noktası ve hedefi çizer."""
     fig = go.Figure()
     vac = scenario.vacuum_trajectory
     act = scenario.actual_trajectory
@@ -41,28 +45,29 @@ def build_3d_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Fig
         )
     )
 
-    # Vakum referans eğrisi
-    fig.add_trace(
-        go.Scatter3d(
-            x=vac.x,
-            y=vac.y,
-            z=vac.z,
-            mode="lines",
-            name=vac.label,
-            line=dict(color=palette.reference, width=3, dash="dash"),
-            text=_trajectory_hover_text(vac),
-            hoverinfo="text",
+    # İsteğe bağlı sürtünmesiz (7.1) referans eğrisi
+    if show_vacuum_reference:
+        fig.add_trace(
+            go.Scatter3d(
+                x=vac.x,
+                y=vac.y,
+                z=vac.z,
+                mode="lines",
+                name=vac.label,
+                line=dict(color=palette.reference, width=3, dash="dash"),
+                text=_trajectory_hover_text(vac),
+                hoverinfo="text",
+            )
         )
-    )
 
-    # Sürtünmeli ve rüzgarlı yörünge
+    # Yük yörüngesi
     fig.add_trace(
         go.Scatter3d(
             x=act.x,
             y=act.y,
             z=act.z,
             mode="lines",
-            name=act.label,
+            name="Yük Yörüngesi",
             line=dict(color=palette.accent, width=5),
             text=_trajectory_hover_text(act),
             hoverinfo="text",
@@ -116,21 +121,22 @@ def build_3d_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Fig
         )
     )
 
-    fig.add_trace(
-        go.Scatter3d(
-            x=[vac.impact_point.x],
-            y=[vac.impact_point.y],
-            z=[0.0],
-            mode="markers",
-            name="Vakum Düşüşü",
-            showlegend=False,
-            marker=dict(size=6, color=palette.reference, symbol="circle-open", line=dict(width=2)),
-            hovertemplate=(
-                f"<b>Vakum Düşüş Noktası</b><br>"
-                f"X: {vac.impact_point.x:.1f} m, Y: {vac.impact_point.y:.1f} m<extra></extra>"
-            ),
+    if show_vacuum_reference:
+        fig.add_trace(
+            go.Scatter3d(
+                x=[vac.impact_point.x],
+                y=[vac.impact_point.y],
+                z=[0.0],
+                mode="markers",
+                name="Sürtünmesiz Düşüş",
+                showlegend=False,
+                marker=dict(size=6, color=palette.reference, symbol="circle-open", line=dict(width=2)),
+                hovertemplate=(
+                    f"<b>Sürtünmesiz Düşüş Noktası</b><br>"
+                    f"X: {vac.impact_point.x:.1f} m, Y: {vac.impact_point.y:.1f} m<extra></extra>"
+                ),
+            )
         )
-    )
 
     fig.add_trace(
         go.Scatter3d(
@@ -138,7 +144,7 @@ def build_3d_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Fig
             y=[tgt.y],
             z=[0.0],
             mode="markers",
-            name="Hedef (0 m)",
+            name="Hedef",
             showlegend=False,
             marker=dict(size=8, color=palette.accent, symbol="x"),
             hovertemplate=(
@@ -156,7 +162,11 @@ def build_3d_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Fig
         color=palette.text_secondary,
     )
 
-    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(vac, act, tgt)
+    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
+        vac if show_vacuum_reference else act,
+        act,
+        tgt,
+    )
 
     fig.update_layout(
         template=palette.plotly_template,

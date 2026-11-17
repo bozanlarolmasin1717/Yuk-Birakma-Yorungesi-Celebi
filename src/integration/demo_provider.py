@@ -163,7 +163,7 @@ def build_demo_scenario(inputs: SimulationInputs) -> DropScenarioView:
     actual_impact = Point3D(*forward_res.impact_point)
 
     actual_series = TrajectorySeries(
-        label="Hava Sürtünmeli + Rüzgarlı (Demo)",
+        label="Gerçekçi (Cd + Rüzgar)",
         x=forward_res.x,
         y=forward_res.y,
         z=forward_res.z,

@@ -6,7 +6,11 @@ from src.visualization.geometry import format_lead_distance, project_along_headi
 from src.visualization.schemas import DropScenarioView
 
 
-def build_side_profile_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Figure:
+def build_side_profile_figure(
+    scenario: DropScenarioView,
+    palette: ThemePalette,
+    show_vacuum_reference: bool = False,
+) -> go.Figure:
     """İHA uçuş ekseni boyunca yandan düşüş profilini ve kaç metre önce bırakıldığını çizer."""
     fig = go.Figure()
     rel = scenario.release_solution.release_point
@@ -34,27 +38,27 @@ def build_side_profile_figure(scenario: DropScenarioView, palette: ThemePalette)
         )
     )
 
-    # Vakum eğrisi
-    fig.add_trace(
-        go.Scatter(
-            x=vac_s,
-            y=scenario.vacuum_trajectory.z,
-            mode="lines",
-            name="Vakum Yörüngesi",
-            line=dict(color=palette.reference, width=2.5, dash="dash"),
-            hovertemplate="Rota Mesafesi: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra>Vakum</extra>",
+    if show_vacuum_reference:
+        fig.add_trace(
+            go.Scatter(
+                x=vac_s,
+                y=scenario.vacuum_trajectory.z,
+                mode="lines",
+                name="Sürtünmesiz (Vakum)",
+                line=dict(color=palette.reference, width=2.5, dash="dash"),
+                hovertemplate="Rota Mesafesi: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra>Sürtünmesiz</extra>",
+            )
         )
-    )
 
-    # Sürtünmeli + rüzgarlı eğri
+    # Yük yörüngesi
     fig.add_trace(
         go.Scatter(
             x=act_s,
             y=scenario.actual_trajectory.z,
             mode="lines",
-            name="Gerçekçi Yörünge (Cd + Rüzgar)",
+            name="Yük Yörüngesi",
             line=dict(color=palette.accent, width=3.5),
-            hovertemplate="Rota Mesafesi: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra>Cd + Rüzgar</extra>",
+            hovertemplate="Rota Mesafesi: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra>Yük Yörüngesi</extra>",
         )
     )
 
@@ -68,29 +72,47 @@ def build_side_profile_figure(scenario: DropScenarioView, palette: ThemePalette)
         line=dict(color=palette.primary, width=1.5, dash="dash"),
     )
 
-    vac_gap_s = abs(vac_s[-1] - tgt_s)
-    vac_text = "" if vac_gap_s < 3.0 else "Vakum Düşüş"
-    if vac_s[-1] >= tgt_s:
-        marker_positions = ["top right", "top left", "top right"]
-    else:
-        marker_positions = ["top right", "top right", "top left"]
-
-    fig.add_trace(
-        go.Scatter(
-            x=[0.0, tgt_s, vac_s[-1]],
-            y=[rel.z, 0.0, 0.0],
-            mode="markers+text",
-            text=["Bırakma (0 m)", f"Hedef ({tgt_s:.1f} m)", vac_text],
-            textposition=marker_positions,
-            marker=dict(
-                size=[11, 11, 9],
-                color=[palette.primary, palette.accent, palette.reference],
-                symbol=["diamond", "x", "circle-open"],
-            ),
-            showlegend=False,
-            hovertemplate="%{text}<br>Mesafe: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra></extra>",
+    if show_vacuum_reference:
+        vac_gap_s = abs(vac_s[-1] - tgt_s)
+        vac_text = "" if vac_gap_s < 3.0 else "Sürtünmesiz Düşüş"
+        marker_positions = (
+            ["top right", "top left", "top right"]
+            if vac_s[-1] >= tgt_s
+            else ["top right", "top right", "top left"]
         )
-    )
+        fig.add_trace(
+            go.Scatter(
+                x=[0.0, tgt_s, vac_s[-1]],
+                y=[rel.z, 0.0, 0.0],
+                mode="markers+text",
+                text=["Bırakma", "Hedef", vac_text],
+                textposition=marker_positions,
+                marker=dict(
+                    size=[11, 11, 9],
+                    color=[palette.primary, palette.accent, palette.reference],
+                    symbol=["diamond", "x", "circle-open"],
+                ),
+                showlegend=False,
+                hovertemplate="%{text}<br>Mesafe: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra></extra>",
+            )
+        )
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=[0.0, tgt_s],
+                y=[rel.z, 0.0],
+                mode="markers+text",
+                text=["Bırakma", "Hedef"],
+                textposition=["top right", "top center"],
+                marker=dict(
+                    size=[11, 11],
+                    color=[palette.primary, palette.accent],
+                    symbol=["diamond", "x"],
+                ),
+                showlegend=False,
+                hovertemplate="%{text}<br>Mesafe: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra></extra>",
+            )
+        )
 
     # 7.3 Bırakma mesafesi ölçüm oku (zemin seviyesinin hemen altında/üstünde)
     lead_y = max(rel.z * 0.08, 4.0)
@@ -112,7 +134,7 @@ def build_side_profile_figure(scenario: DropScenarioView, palette: ThemePalette)
     fig.add_annotation(
         x=0.5 * tgt_s,
         y=lead_y,
-        text=f"Bırakma Mesafesi: {format_lead_distance(scenario.release_solution.lead_distance_m)}",
+        text=format_lead_distance(scenario.release_solution.lead_distance_m),
         showarrow=False,
         yshift=14,
         font=dict(size=12, color=palette.primary),

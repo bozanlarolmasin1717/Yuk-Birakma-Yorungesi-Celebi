@@ -40,7 +40,11 @@ def _serialize_series(
     }
 
 
-def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> str:
+def build_simulator_html(
+    scenario: DropScenarioView,
+    palette: ThemePalette,
+    show_vacuum_reference: bool = False,
+) -> str:
     """Canlı simülasyon bileşeninin saf HTML/CSS/JS çıktısını üretir."""
     rel = scenario.release_solution.release_point
     tgt = scenario.release_solution.target_point
@@ -73,7 +77,8 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
         },
         "bounds2d": {"x": [x_min, x_max], "y": [y_min, y_max]},
         "leadLabel": format_lead_distance(scenario.release_solution.lead_distance_m),
-        "tFlight": max(act.flight_time, vac.flight_time),
+        "showVacuum": show_vacuum_reference,
+        "tFlight": act.flight_time if not show_vacuum_reference else max(act.flight_time, vac.flight_time),
         "tActualImpact": act.flight_time,
         "palette": {
             "bgPage": palette.bg_page,
@@ -304,19 +309,19 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
 
     <div class="telemetry-bar">
       <div class="tele-cell">
-        <div class="tele-label">Bırakmaya Göre Zaman</div>
+        <div class="tele-label">Geçen Süre</div>
         <div id="valTime" class="tele-val">0.00 s</div>
       </div>
       <div class="tele-cell">
-        <div class="tele-label">Yük İrtifası (Z)</div>
+        <div class="tele-label">Yük Yüksekliği</div>
         <div id="valAlt" class="tele-val">0.0 m</div>
       </div>
       <div class="tele-cell">
-        <div class="tele-label">Yük Anlık Hızı</div>
+        <div class="tele-label">Yük Hızı</div>
         <div id="valSpeed" class="tele-val">0.0 m/s</div>
       </div>
       <div class="tele-cell">
-        <div class="tele-label">Hedefe Yatay Mesafe</div>
+        <div class="tele-label">Hedefe Kalan Mesafe</div>
         <div id="valDist" class="tele-val">0.0 m</div>
       </div>
     </div>
@@ -324,20 +329,20 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
     <div class="canvas-grid">
       <div class="canvas-card">
         <div class="canvas-head">
-          <span class="canvas-title">Yandan Kesit (İrtifa – Rota Mesafesi)</span>
+          <span class="canvas-title">Yandan Görünüm (Yükseklik – Mesafe)</span>
           <div class="canvas-legend">
-            <span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Cd + Rüzgar</span>
-            <span class="leg-item"><span class="leg-line" style="border-top:2px dashed {palette.reference};"></span>Vakum</span>
+            <span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Yük Yörüngesi</span>
+            <span class="leg-item"><span class="leg-line" style="border-top:2px dashed {palette.primary};"></span>Bırakma Noktası</span>
           </div>
         </div>
         <canvas id="sideCanvas"></canvas>
       </div>
       <div class="canvas-card">
         <div class="canvas-head">
-          <span class="canvas-title">Kuşbakışı Radar (Doğu – Kuzey)</span>
+          <span class="canvas-title">Üstten Görünüm (Kuşbakışı Radar)</span>
           <div class="canvas-legend">
-            <span class="leg-item"><span class="leg-line" style="background:{palette.wind_color};"></span>Rüzgar Akışı</span>
-            <span class="leg-item"><span class="leg-line" style="background:{palette.primary};"></span>Bırakma</span>
+            <span class="leg-item"><span class="leg-line" style="background:{palette.wind_color};"></span>Rüzgar</span>
+            <span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Yük İzi</span>
           </div>
         </div>
         <canvas id="topCanvas"></canvas>
@@ -472,10 +477,11 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
         PRE_ROLL * DATA.uav.speed,
         0,
         DATA.target.s,
-        DATA.vacImpact.s,
         ...DATA.actual.s,
-        ...DATA.vacuum.s,
       ];
+      if (DATA.showVacuum) {{
+        sSamples.push(DATA.vacImpact.s, ...DATA.vacuum.s);
+      }}
       let sMin = Math.min(...sSamples) - 18;
       let sMax = Math.max(...sSamples) + 28;
       if (sMax - sMin < 40) {{ sMin -= 20; sMax += 20; }}
@@ -533,40 +539,43 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
       ctx.stroke();
       ctx.restore();
 
-      // Vakum referans eğrisi (soluk rehber + aktif iz)
-      ctx.save();
-      ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = P.reference;
-      ctx.globalAlpha = 0.28;
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      DATA.vacuum.s.forEach((sv, idx) => {{
-        const px = toX(sv);
-        const py = toY(DATA.vacuum.z[idx]);
-        if (idx === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-      }});
-      ctx.stroke();
-      ctx.restore();
-
-      if (simTime > 0) {{
-        // Aktif vakum izi
+      // İsteğe bağlı sürtünmesiz referans eğrisi
+      if (DATA.showVacuum) {{
         ctx.save();
         ctx.setLineDash([5, 4]);
         ctx.strokeStyle = P.reference;
-        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.28;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
-        ctx.moveTo(toX(0), toY(DATA.uav.altitude));
-        for (let i = 0; i < DATA.vacuum.t.length; i++) {{
-          if (DATA.vacuum.t[i] <= simTime) {{
-            ctx.lineTo(toX(DATA.vacuum.s[i]), toY(DATA.vacuum.z[i]));
-          }}
-        }}
-        ctx.lineTo(toX(vacState.s), toY(vacState.z));
+        DATA.vacuum.s.forEach((sv, idx) => {{
+          const px = toX(sv);
+          const py = toY(DATA.vacuum.z[idx]);
+          if (idx === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }});
         ctx.stroke();
         ctx.restore();
+      }}
 
-        // Aktif sürtünmeli + rüzgarlı iz
+      if (simTime > 0) {{
+        if (DATA.showVacuum) {{
+          ctx.save();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = P.reference;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(toX(0), toY(DATA.uav.altitude));
+          for (let i = 0; i < DATA.vacuum.t.length; i++) {{
+            if (DATA.vacuum.t[i] <= simTime) {{
+              ctx.lineTo(toX(DATA.vacuum.s[i]), toY(DATA.vacuum.z[i]));
+            }}
+          }}
+          ctx.lineTo(toX(vacState.s), toY(vacState.z));
+          ctx.stroke();
+          ctx.restore();
+        }}
+
+        // Aktif yük yörüngesi
         ctx.save();
         ctx.strokeStyle = P.accent;
         ctx.lineWidth = 3;
@@ -611,21 +620,51 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
       ctx.textAlign = "center";
       ctx.fillText("Bırakma", xRel, yGround + 16);
       ctx.fillStyle = P.accent;
-      ctx.fillText("Hedef (" + DATA.leadLabel + ")", xTgt, yGround + 28);
+      ctx.font = "600 11px IBM Plex Sans, sans-serif";
+      ctx.fillText("Hedef", xTgt, yGround + 16);
+
+      if (DATA.showVacuum) {{
+        const xVacEnd = toX(DATA.vacImpact.s);
+        if (Math.abs(xVacEnd - xTgt) > 54 && Math.abs(xVacEnd - xRel) > 54) {{
+          ctx.fillStyle = P.textSecondary;
+          ctx.font = "11px IBM Plex Sans, sans-serif";
+          ctx.fillText("Sürtünmesiz", xVacEnd, yGround + 16);
+        }}
+      }}
+
+      if (Math.abs(xTgt - xRel) > 36) {{
+        const yDim = yGround - 14;
+        ctx.save();
+        ctx.strokeStyle = P.primary;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(xRel, yDim);
+        ctx.lineTo(xTgt, yDim);
+        ctx.stroke();
+        ctx.fillStyle = P.primary;
+        ctx.font = "600 11px IBM Plex Sans, sans-serif";
+        ctx.fillText(DATA.leadLabel, 0.5 * (xRel + xTgt), yDim - 6);
+        ctx.restore();
+      }} else {{
+        ctx.fillStyle = P.primary;
+        ctx.font = "600 11px IBM Plex Sans, sans-serif";
+        ctx.fillText(DATA.leadLabel, 0.5 * (xRel + xTgt), yGround + 29);
+      }}
 
       // Hareketli İHA ve yükler
       const uavS = Math.min(Math.max(DATA.uav.speed * simTime, sMin), sMax);
       drawUavGlyph(ctx, toX(uavS), yAlt, 0, P.primary);
 
       if (simTime > 0) {{
-        // Vakum yükü (açık halka)
-        ctx.strokeStyle = P.reference;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(toX(vacState.s), toY(vacState.z), 5, 0, Math.PI * 2);
-        ctx.stroke();
+        if (DATA.showVacuum) {{
+          ctx.strokeStyle = P.reference;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(toX(vacState.s), toY(vacState.z), 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }}
 
-        // Gerçekçi yük (dolu vurgu noktası)
+        // Yük noktası (dolu vurgu noktası)
         ctx.fillStyle = P.accent;
         ctx.beginPath();
         ctx.arc(toX(actState.s), toY(actState.z), 6, 0, Math.PI * 2);
@@ -747,23 +786,24 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
       ctx.stroke();
 
       if (simTime > 0) {{
-        // Vakum izi
-        ctx.save();
-        ctx.setLineDash([5, 4]);
-        ctx.strokeStyle = P.reference;
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.moveTo(rx, ry);
-        for (let i = 0; i < DATA.vacuum.t.length; i++) {{
-          if (DATA.vacuum.t[i] <= simTime) {{
-            ctx.lineTo(toPx(DATA.vacuum.x[i]), toPy(DATA.vacuum.y[i]));
+        if (DATA.showVacuum) {{
+          ctx.save();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = P.reference;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          for (let i = 0; i < DATA.vacuum.t.length; i++) {{
+            if (DATA.vacuum.t[i] <= simTime) {{
+              ctx.lineTo(toPx(DATA.vacuum.x[i]), toPy(DATA.vacuum.y[i]));
+            }}
           }}
+          ctx.lineTo(toPx(vacState.x), toPy(vacState.y));
+          ctx.stroke();
+          ctx.restore();
         }}
-        ctx.lineTo(toPx(vacState.x), toPy(vacState.y));
-        ctx.stroke();
-        ctx.restore();
 
-        // Gerçekçi iz
+        // Yük izi
         ctx.strokeStyle = P.accent;
         ctx.lineWidth = 2.8;
         ctx.beginPath();
@@ -776,12 +816,13 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
         ctx.lineTo(toPx(actState.x), toPy(actState.y));
         ctx.stroke();
 
-        // Vakum ve gerçekçi yük işaretleri
-        ctx.strokeStyle = P.reference;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(toPx(vacState.x), toPy(vacState.y), 4.5, 0, Math.PI * 2);
-        ctx.stroke();
+        if (DATA.showVacuum) {{
+          ctx.strokeStyle = P.reference;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(toPx(vacState.x), toPy(vacState.y), 4.5, 0, Math.PI * 2);
+          ctx.stroke();
+        }}
 
         ctx.fillStyle = P.accent;
         ctx.beginPath();
@@ -885,7 +926,11 @@ def build_simulator_html(scenario: DropScenarioView, palette: ThemePalette) -> s
 """
 
 
-def render_live_simulator(scenario: DropScenarioView, palette: ThemePalette) -> None:
+def render_live_simulator(
+    scenario: DropScenarioView,
+    palette: ThemePalette,
+    show_vacuum_reference: bool = False,
+) -> None:
     """Streamlit içine senkronize HTML5 canlı simülatör bileşenini yerleştirir."""
-    html_doc = build_simulator_html(scenario, palette)
+    html_doc = build_simulator_html(scenario, palette, show_vacuum_reference=show_vacuum_reference)
     components.html(html_doc, height=540, scrolling=True)

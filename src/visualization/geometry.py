@@ -65,8 +65,8 @@ def compute_axis_bounds(
 def format_lead_distance(lead_distance_m: float) -> str:
     """7.3 bırakma mesafesini işaretine göre okunur Türkçe metne çevirir."""
     if lead_distance_m >= 0.0:
-        return f"{lead_distance_m:.1f} m önce"
-    return f"{abs(lead_distance_m):.1f} m sonra (ters rüzgar)"
+        return f"{lead_distance_m:.1f} m önce bırak"
+    return f"{abs(lead_distance_m):.1f} m geç bırak (ters rüzgar)"
 
 
 def compute_vacuum_trajectory(
@@ -77,7 +77,7 @@ def compute_vacuum_trajectory(
     vz0: float = 0.0,
     samples: int = 60,
 ) -> TrajectorySeries:
-    """7.1 referans vakum (hava direncisiz) parabolik yörüngesini üretir."""
+    """7.1 referans hava direncisiz (vakum) parabolik yörüngesini üretir."""
     dz = max(release.z, 0.1)
     g = max(gravity, 0.1)
     discriminant = max(vz0 * vz0 + 2.0 * g * dz, 0.0)
@@ -104,7 +104,7 @@ def compute_vacuum_trajectory(
     impact = Point3D(xs[-1], ys[-1], 0.0)
     horiz_range = math.hypot(impact.x - release.x, impact.y - release.y)
     return TrajectorySeries(
-        label="Vakum Referansı (7.1)",
+        label="Sürtünmesiz (Vakum)",
         x=tuple(xs),
         y=tuple(ys),
         z=tuple(zs),

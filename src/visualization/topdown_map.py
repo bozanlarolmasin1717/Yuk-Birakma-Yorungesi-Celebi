@@ -6,15 +6,23 @@ from src.visualization.geometry import circle_points, compute_axis_bounds
 from src.visualization.schemas import DropScenarioView
 
 
-def build_topdown_figure(scenario: DropScenarioView, palette: ThemePalette) -> go.Figure:
-    """Kuşbakışı ENU düzleminde rota, rüzgar sapması ve hedef halkalarını çizer."""
+def build_topdown_figure(
+    scenario: DropScenarioView,
+    palette: ThemePalette,
+    show_vacuum_reference: bool = False,
+) -> go.Figure:
+    """Kuşbakışı ENU düzleminde rota, rüzgar ve hedef halkalarını çizer."""
     fig = go.Figure()
     vac = scenario.vacuum_trajectory
     act = scenario.actual_trajectory
     rel = scenario.release_solution.release_point
     tgt = scenario.release_solution.target_point
 
-    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(vac, act, tgt)
+    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
+        vac if show_vacuum_reference else act,
+        act,
+        tgt,
+    )
 
     # Hedef çevresi referans halkaları (5 m ve 15 m)
     for radius, dash, label in [(5.0, "solid", "5 m Yarıçap"), (15.0, "dot", "15 m Yarıçap")]:
@@ -42,49 +50,65 @@ def build_topdown_figure(scenario: DropScenarioView, palette: ThemePalette) -> g
         )
     )
 
-    # Vakum iz düşümü
-    fig.add_trace(
-        go.Scatter(
-            x=vac.x,
-            y=vac.y,
-            mode="lines",
-            name="Vakum İzdüşümü",
-            line=dict(color=palette.reference, width=2.2, dash="dash"),
+    if show_vacuum_reference:
+        fig.add_trace(
+            go.Scatter(
+                x=vac.x,
+                y=vac.y,
+                mode="lines",
+                name="Sürtünmesiz (Vakum)",
+                line=dict(color=palette.reference, width=2.2, dash="dash"),
+            )
         )
-    )
 
-    # Gerçekçi iz düşümü
+    # Yük izi
     fig.add_trace(
         go.Scatter(
             x=act.x,
             y=act.y,
             mode="lines",
-            name="Sürtünmeli + Rüzgarlı İz",
+            name="Yük İzi",
             line=dict(color=palette.accent, width=3.5),
         )
     )
 
-    # Kritik noktalar
-    vac_label = "" if scenario.drift_from_vacuum_m < 3.0 else "Vakum"
-    tgt_pos = "top center" if tgt.y >= vac.impact_point.y else "bottom center"
-    vac_pos = "bottom center" if vac.impact_point.y <= tgt.y else "top center"
-    marker_positions = ["top left", vac_pos, tgt_pos]
-    fig.add_trace(
-        go.Scatter(
-            x=[rel.x, vac.impact_point.x, tgt.x],
-            y=[rel.y, vac.impact_point.y, tgt.y],
-            mode="markers+text",
-            text=["Bırakma", vac_label, "Hedef"],
-            textposition=marker_positions,
-            marker=dict(
-                size=[11, 9, 12],
-                color=[palette.primary, palette.reference, palette.accent],
-                symbol=["diamond", "circle-open", "x"],
-            ),
-            showlegend=False,
-            hovertemplate="%{text}<br>Doğu: %{x:.1f} m<br>Kuzey: %{y:.1f} m<extra></extra>",
+    if show_vacuum_reference:
+        vac_label = "" if scenario.drift_from_vacuum_m < 3.0 else "Sürtünmesiz"
+        tgt_pos = "top center" if tgt.y >= vac.impact_point.y else "bottom center"
+        vac_pos = "bottom center" if vac.impact_point.y <= tgt.y else "top center"
+        fig.add_trace(
+            go.Scatter(
+                x=[rel.x, vac.impact_point.x, tgt.x],
+                y=[rel.y, vac.impact_point.y, tgt.y],
+                mode="markers+text",
+                text=["Bırakma", vac_label, "Hedef"],
+                textposition=["top left", vac_pos, tgt_pos],
+                marker=dict(
+                    size=[11, 9, 12],
+                    color=[palette.primary, palette.reference, palette.accent],
+                    symbol=["diamond", "circle-open", "x"],
+                ),
+                showlegend=False,
+                hovertemplate="%{text}<br>Doğu: %{x:.1f} m<br>Kuzey: %{y:.1f} m<extra></extra>",
+            )
         )
-    )
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=[rel.x, tgt.x],
+                y=[rel.y, tgt.y],
+                mode="markers+text",
+                text=["Bırakma", "Hedef"],
+                textposition=["top left", "top center"],
+                marker=dict(
+                    size=[11, 12],
+                    color=[palette.primary, palette.accent],
+                    symbol=["diamond", "x"],
+                ),
+                showlegend=False,
+                hovertemplate="%{text}<br>Doğu: %{x:.1f} m<br>Kuzey: %{y:.1f} m<extra></extra>",
+            )
+        )
 
     # Rüzgar yönü ve şiddeti oku (sol üst köşede temiz gösterge)
     wx, wy = scenario.wind_vector_mps

@@ -151,7 +151,7 @@ def solve_release_point(
 
     method = "7.1 İlk Tahmin + Sabit Nokta"
 
-    # 2. Aşama: Uzaysal değişen rüzgar/arazi varsa sönümlü 2B Newton-Raphson
+    # 2. Aşama: Uzaysal değişen rüzgar/arazi varsa sönümlü 2B Newton-Raphson , jacobian ile
     while best_err > cfg.tolerance_m and iterations < cfg.max_iterations:
         method = "Sabit Nokta + 2B Newton-Raphson"
         h = cfg.fd_step_m

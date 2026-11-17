@@ -1,7 +1,8 @@
-"""Kenar çubuğu (sidebar) kontrol paneli: Tema seçimi ve SI biriminde uçuş girdileri."""
+"""Kenar çubuğu (sidebar) kontrol paneli: Tema seçimi, 2B yön kadranları ve SI uçuş girdileri."""
 
 import streamlit as st
-from src.ui.theme import SPACE_2, ThemePalette, svg_icon
+from src.ui.direction_dial import compass_direction_name, render_direction_dial
+from src.ui.theme import SPACE_2, ThemePalette, get_palette, svg_icon
 from src.visualization.geometry import wind_from_to_vector
 from src.visualization.schemas import PAYLOAD_SHAPE_CD_PRESETS, SimulationInputs
 
@@ -17,7 +18,6 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
             unsafe_allow_html=True,
         )
 
-        # Açık / Koyu tema seçimi
         theme_choice = st.radio(
             "Görünüm Teması",
             options=["acik", "koyu"],
@@ -25,6 +25,7 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
             horizontal=True,
             key="theme_mode",
         )
+        active_palette = get_palette(theme_choice)
 
         st.divider()
         st.markdown(
@@ -33,42 +34,43 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
             unsafe_allow_html=True,
         )
         uav_speed_mps = st.slider(
-            "İHA Yer Hızı (m/s)",
+            "İHA Hızı (m/s)",
             min_value=8.0,
             max_value=80.0,
             value=28.0,
             step=1.0,
         )
         release_altitude_m = st.slider(
-            "Bırakılma İrtifası (m)",
+            "Bırakma Yüksekliği (m)",
             min_value=15.0,
             max_value=400.0,
             value=120.0,
             step=5.0,
         )
-        uav_heading_deg = st.slider(
-            "Uçuş İstikameti (° — 0° Kuzey, 90° Doğu)",
-            min_value=0,
-            max_value=359,
-            value=90,
-            step=5,
+        uav_heading_deg = render_direction_dial(
+            key="uav_heading_dial",
+            label="Uçuş İstikameti",
+            mode="uav",
+            default_angle=90,
+            palette=active_palette,
+            subtitle="Sürükleyerek (5° adım) veya alttan yazarak belirleyin",
         )
 
         st.divider()
         st.markdown(
             f'<div class="celebi-metric-label">{svg_icon("trajectory", "var(--primary)", 16)} '
-            f"<span>Faydalı Yük ve Sürtünme (Cd)</span></div>",
+            f"<span>Faydalı Yük ve Hava Direnci (Cd)</span></div>",
             unsafe_allow_html=True,
         )
         payload_shape = st.selectbox(
-            "Yük Geometrisi Profili",
+            "Yük Şekli",
             options=list(PAYLOAD_SHAPE_CD_PRESETS.keys()),
             index=4,
         )
         preset_cd = PAYLOAD_SHAPE_CD_PRESETS[payload_shape]
         if payload_shape == "Özel Değer":
             drag_coefficient = st.slider(
-                "Sürtünme Katsayısı (Cd)",
+                "Hava Direnci Katsayısı (Cd)",
                 min_value=0.05,
                 max_value=2.00,
                 value=0.47,
@@ -76,7 +78,7 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
             )
         else:
             drag_coefficient = preset_cd
-            st.caption(f"Seçili profil sürtünme katsayısı: Cd = {drag_coefficient:.2f}")
+            st.caption(f"Sürtünme katsayısı: Cd = {drag_coefficient:.2f}")
 
         col_m, col_a = st.columns(2)
         with col_m:
@@ -100,37 +102,39 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
         st.divider()
         st.markdown(
             f'<div class="celebi-metric-label">{svg_icon("wind", "var(--primary)", 16)} '
-            f"<span>Rüzgar Modeli</span></div>",
+            f"<span>Rüzgar</span></div>",
             unsafe_allow_html=True,
         )
         wind_speed_mps = st.slider(
-            "Rüzgar Şiddeti (m/s)",
+            "Rüzgar Hızı (m/s)",
             min_value=0.0,
             max_value=25.0,
             value=7.5,
             step=0.5,
         )
-        wind_from_deg = st.slider(
-            "Rüzgarın Estiği Yön (° — 0° Kuzeyden)",
-            min_value=0,
-            max_value=359,
-            value=210,
-            step=5,
+        wind_from_deg = render_direction_dial(
+            key="wind_from_dial",
+            label="Rüzgarın Estiği Yön",
+            mode="wind",
+            default_angle=210,
+            palette=active_palette,
+            subtitle="Ok rüzgarın geldiği taraftan merkeze doğru eser",
         )
         wx, wy = wind_from_to_vector(wind_speed_mps, float(wind_from_deg))
-        st.caption(f"İtiş vektörü: Doğu {wx:+.1f} m/s, Kuzey {wy:+.1f} m/s")
+        push_dir = compass_direction_name((wind_from_deg + 180) % 360)
+        st.caption(f"Yükü {push_dir} yönüne iter (Doğu {wx:+.1f}, Kuzey {wy:+.1f} m/s)")
 
         st.divider()
         st.markdown(
             f'<div class="celebi-metric-label">{svg_icon("target", "var(--primary)", 16)} '
-            f"<span>Hedef Koordinatı (ENU)</span></div>",
+            f"<span>Hedef Konumu (m)</span></div>",
             unsafe_allow_html=True,
         )
         col_tx, col_ty = st.columns(2)
         with col_tx:
-            target_x_m = st.number_input("Hedef Doğu X (m)", value=0.0, step=10.0)
+            target_x_m = st.number_input("Doğu X (m)", value=0.0, step=10.0)
         with col_ty:
-            target_y_m = st.number_input("Hedef Kuzey Y (m)", value=0.0, step=10.0)
+            target_y_m = st.number_input("Kuzey Y (m)", value=0.0, step=10.0)
 
     inputs = SimulationInputs(
         uav_speed_mps=float(uav_speed_mps),
