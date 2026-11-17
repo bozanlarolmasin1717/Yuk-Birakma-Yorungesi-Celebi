@@ -136,6 +136,27 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
         with col_ty:
             target_y_m = st.number_input("Kuzey Y (m)", value=0.0, step=10.0)
 
+        with st.expander("Gelişmiş Fizik Ayarları"):
+            flight_path_angle_deg = st.slider(
+                "Tırmanma / Dalış Açısı γ (°)",
+                min_value=-20,
+                max_value=20,
+                value=0,
+                step=1,
+            )
+            use_isa = st.checkbox(
+                "İrtifaya bağlı hava yoğunluğu (ISA)",
+                value=False,
+            )
+            wind_shear_coeff = st.slider(
+                "Yükseklikle rüzgar artışı (1/m)",
+                min_value=0.0,
+                max_value=0.010,
+                value=0.0,
+                step=0.001,
+                format="%.3f",
+            )
+
     inputs = SimulationInputs(
         uav_speed_mps=float(uav_speed_mps),
         uav_heading_deg=float(uav_heading_deg),
@@ -148,5 +169,8 @@ def render_sidebar(palette: ThemePalette) -> tuple[str, SimulationInputs]:
         wind_from_deg=float(wind_from_deg),
         target_x_m=float(target_x_m),
         target_y_m=float(target_y_m),
+        flight_path_angle_deg=float(flight_path_angle_deg),
+        use_isa=bool(use_isa),
+        wind_shear_coeff=float(wind_shear_coeff),
     )
     return theme_choice, inputs

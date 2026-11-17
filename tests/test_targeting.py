@@ -4,7 +4,14 @@ from dataclasses import dataclass
 import math
 import numpy as np
 import pytest
-from src.integration.adapter import build_scenario_from_friend_physics
+from balistik_motor import compute_vacum_ballistics, simulate_trajectory
+from koordinatsistemi import UavState, environmentParameters, payloadParameters
+from src.integration.adapter import (
+    build_scenario_from_friend_physics,
+    load_71_scenario,
+    load_72_scenario,
+    load_scenario,
+)
 from src.targeting import (
     ForwardDropResult,
     TargetingConfig,
@@ -168,3 +175,80 @@ def test_friend_dataclass_contract_integration_via_adapter() -> None:
     assert len(scenario.actual_trajectory.speed) == 35
     fig3d = build_3d_figure(scenario, LIGHT_PALETTE)
     assert len(fig3d.data) >= 6
+
+
+def test_real_friend_engine_71_72_and_73_end_to_end() -> None:
+    # 7.1 ve 7.2 sıfır sürtünme + sıfır rüzgar tutarlılık testi
+    uav = UavState(position=np.array([0.0, 0.0, 120.0]), speed=28.0, heading=60.0, flight_path_angle=5.0)
+    env = environmentParameters(g=9.81, use_is=True, wind_speed=0.0)
+    payload_zero_cd = payloadParameters(mass=5.0, cd=0.0, cross_sectional_area=0.04)
+
+    vac_imp, vac_t = compute_vacum_ballistics(uav, env)
+    rk4_zero = simulate_trajectory(uav, payload_zero_cd, env, dt=0.01)
+    assert np.linalg.norm(rk4_zero.impact_point - vac_imp) < 1e-4
+    assert rk4_zero.flight_time == pytest.approx(vac_t, abs=1e-4)
+
+    # ISA 0.0065 düzeltmesi kontrolü (1000 m'de standart ~1.111 kg/m³)
+    assert env.air_density(1000.0) == pytest.approx(1.1116, abs=0.002)
+
+    inputs = SimulationInputs(
+        uav_speed_mps=28.0,
+        uav_heading_deg=60.0,
+        release_altitude_m=120.0,
+        payload_mass_kg=6.0,
+        payload_area_m2=0.045,
+        drag_coefficient=1.05,
+        payload_shape="Kübik Yardım Paketi",
+        wind_speed_mps=8.0,
+        wind_from_deg=200.0,
+        target_x_m=30.0,
+        target_y_m=-15.0,
+        flight_path_angle_deg=5.0,
+        use_isa=True,
+        wind_shear_coeff=0.002,
+    )
+
+    s71 = load_71_scenario(inputs)
+    s72 = load_72_scenario(inputs)
+    s73 = load_scenario(inputs)
+
+    assert s71.scenario_mode == "7.1" and s71.is_demo_mode is False
+    assert s72.scenario_mode == "7.2" and s72.drift_from_vacuum_m > 5.0
+    assert s73.scenario_mode == "7.3" and s73.is_demo_mode is False
+    assert s73.release_solution.solver_converged is True
+    assert s73.release_solution.predicted_error_m < 1e-3
+
+    # Gerçek çarpma hızı (||impact_velocity||) hem 7.2 hem 7.3 serisinde birebir korunmalı
+    uav_rel = UavState(
+        position=np.array(
+            [
+                s73.release_solution.release_point.x,
+                s73.release_solution.release_point.y,
+                s73.release_solution.release_point.z,
+            ]
+        ),
+        speed=inputs.uav_speed_mps,
+        heading=inputs.uav_heading_deg,
+        flight_path_angle=inputs.flight_path_angle_deg,
+    )
+    env_full = environmentParameters(
+        g=inputs.gravity_mps2,
+        rho_sea_level=inputs.air_density_kgm3,
+        use_is=inputs.use_isa,
+        wind_speed=inputs.wind_speed_mps,
+        wind_director=inputs.wind_from_deg,
+        wind_shear_coeff=inputs.wind_shear_coeff,
+    )
+    payload_full = payloadParameters(
+        mass=inputs.payload_mass_kg,
+        cd=inputs.drag_coefficient,
+        cross_sectional_area=inputs.payload_area_m2,
+    )
+    rk4_72 = simulate_trajectory(uav, payload_full, env_full, dt=0.01)
+    rk4_73 = simulate_trajectory(uav_rel, payload_full, env_full, dt=0.01)
+    assert s72.actual_trajectory.speed[-1] == pytest.approx(float(np.linalg.norm(rk4_72.impact_velocity)), abs=1e-4)
+    assert s73.actual_trajectory.speed[-1] == pytest.approx(float(np.linalg.norm(rk4_73.impact_velocity)), abs=1e-4)
+    assert s73.wind_vector_mps == pytest.approx(
+        (float(env_full.wind_vector(inputs.release_altitude_m)[0]), float(env_full.wind_vector(inputs.release_altitude_m)[1])),
+        abs=1e-6,
+    )

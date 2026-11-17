@@ -29,10 +29,11 @@ def _sample_inputs(wind_speed: float = 8.0) -> SimulationInputs:
     )
 
 
-def test_demo_scenario_hits_target_within_tolerance() -> None:
+def test_real_physics_scenario_hits_target_within_tolerance() -> None:
     scenario = load_scenario(_sample_inputs())
-    assert scenario.is_demo_mode is True
-    assert scenario.release_solution.predicted_error_m < 0.05
+    assert scenario.is_demo_mode is False
+    assert scenario.scenario_mode == "7.3"
+    assert scenario.release_solution.predicted_error_m < 1e-3
     assert scenario.release_solution.lead_distance_m > 0.0
     assert scenario.actual_trajectory.z[-1] == 0.0
     assert scenario.vacuum_trajectory.z[-1] == 0.0
@@ -157,16 +158,16 @@ def test_direction_dial_manual_inputs_sync_state() -> None:
 
 def test_module_selector_renders_71_72_and_73_independently() -> None:
     app_path = Path(__file__).resolve().parents[1] / "app.py"
-    at = AppTest.from_file(app_path, default_timeout=15)
+    at = AppTest.from_file(app_path, default_timeout=20)
     at.run()
     assert at.session_state["active_module"] == "7.3 · Hedefleme Algoritması"
 
     at.radio(key="active_module").set_value("7.1 · Balistik Hareket Denklemleri").run()
     assert len(at.exception) == 0
-    assert any("7.1 Balistik Hareket Denklemleri Henüz Bağlanmadı" in m.value for m in at.markdown)
+    assert any("7.1 Sürtünmesiz Düşüş Menzili" in m.value for m in at.markdown)
 
     at.radio(key="active_module").set_value("7.2 · Hava Sürtünmesi ve Rüzgar").run()
     assert len(at.exception) == 0
-    assert any("7.2 Hava Sürtünmesi ve Rüzgar Modeli Henüz Bağlanmadı" in m.value for m in at.markdown)
+    assert any("7.2 Vakuma Göre Toplam Sapma" in m.value for m in at.markdown)
 
 

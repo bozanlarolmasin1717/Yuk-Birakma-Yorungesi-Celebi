@@ -42,21 +42,40 @@ def export_summary_figure_bytes(
     scenario: DropScenarioView,
     palette: ThemePalette,
     fmt: str = "png",
-    show_vacuum_reference: bool = False,
+    show_vacuum_reference: bool | None = None,
 ) -> bytes:
     """3 panelli (3B Yörünge, Yandan Profil, Kuşbakışı) statik rapor görseli üretir."""
+    mode = scenario.scenario_mode
+    show_vac = (mode == "7.2") if show_vacuum_reference is None else show_vacuum_reference
+    impact_label = "Hedef" if mode == "7.3" else ("7.2 Düşüş" if mode == "7.2" else "7.1 Düşüş")
+
     vac = scenario.vacuum_trajectory
     act = scenario.actual_trajectory
     rel = scenario.release_solution.release_point
     tgt = scenario.release_solution.target_point
 
-    fig = plt.figure(figsize=(15, 5.2), dpi=220, facecolor=palette.bg_surface)
-    fig.suptitle(
-        (
+    if mode == "7.1":
+        suptitle = (
+            f"Çelebi 7.1 Vakum Analizi  |  "
+            f"Menzil: {act.horizontal_range:.1f} m  |  "
+            f"Süre: {act.flight_time:.2f} sn"
+        )
+    elif mode == "7.2":
+        suptitle = (
+            f"Çelebi 7.2 Sürtünme ve Rüzgar Sapması  |  "
+            f"Sapma: {scenario.drift_from_vacuum_m:.1f} m  |  "
+            f"Gerçek Menzil: {act.horizontal_range:.1f} m"
+        )
+    else:
+        suptitle = (
             f"Çelebi 7.3 Hedefleme Analizi  |  "
             f"{format_lead_distance(scenario.release_solution.lead_distance_m)}  |  "
             f"Yanal kayma: {scenario.release_solution.lateral_offset_m:+.1f} m"
-        ),
+        )
+
+    fig = plt.figure(figsize=(15, 5.2), dpi=220, facecolor=palette.bg_surface)
+    fig.suptitle(
+        suptitle,
         color=palette.text_primary,
         fontsize=12,
         fontweight="bold",
@@ -65,16 +84,16 @@ def export_summary_figure_bytes(
 
     # 1) 3D panel
     (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
-        vac if show_vacuum_reference else act,
+        vac if show_vac else act,
         act,
         tgt,
     )
     ax3d = fig.add_subplot(1, 3, 1, projection="3d", facecolor=palette.bg_surface)
-    if show_vacuum_reference:
+    if show_vac:
         ax3d.plot(vac.x, vac.y, vac.z, linestyle="--", color=palette.reference, linewidth=1.6, label="Sürtünmesiz")
-    ax3d.plot(act.x, act.y, act.z, color=palette.accent, linewidth=2.4, label="Yük Yörüngesi")
+    ax3d.plot(act.x, act.y, act.z, color=palette.accent, linewidth=2.4, label=act.label)
     ax3d.scatter([rel.x], [rel.y], [rel.z], color=palette.primary, marker="D", s=36, label="Bırakma")
-    ax3d.scatter([tgt.x], [tgt.y], [0.0], color=palette.accent, marker="x", s=45, label="Hedef")
+    ax3d.scatter([tgt.x], [tgt.y], [0.0], color=palette.accent, marker="x", s=45, label=impact_label)
     ax3d.set_xlim(x_min, x_max)
     ax3d.set_ylim(y_min, y_max)
     ax3d.set_zlim(0.0, max(rel.z * 1.08, 10.0))
@@ -97,9 +116,9 @@ def export_summary_figure_bytes(
     act_s = project_along_heading(act.x, act.y, rel, heading)
     tgt_s = project_along_heading((tgt.x,), (tgt.y,), rel, heading)[0]
 
-    if show_vacuum_reference:
+    if show_vac:
         ax_side.plot(vac_s, vac.z, linestyle="--", color=palette.reference, linewidth=1.6, label="Sürtünmesiz")
-    ax_side.plot(act_s, act.z, color=palette.accent, linewidth=2.4, label="Yük Yörüngesi")
+    ax_side.plot(act_s, act.z, color=palette.accent, linewidth=2.4, label=act.label)
     ax_side.scatter([0.0, tgt_s], [rel.z, 0.0], color=[palette.primary, palette.accent], zorder=5)
     ax_side.vlines(0.0, 0.0, rel.z, colors=palette.primary, linestyles="dotted", linewidth=1.2)
     ax_side.set_title("Yandan Profil (İrtifa – Menzil)", fontsize=10)
@@ -111,15 +130,16 @@ def export_summary_figure_bytes(
     # 3) Kuşbakışı harita paneli
     ax_top = fig.add_subplot(1, 3, 3)
     _style_axis(ax_top, palette)
-    cx5, cy5 = circle_points(tgt.x, tgt.y, 5.0)
-    cx15, cy15 = circle_points(tgt.x, tgt.y, 15.0)
-    ax_top.plot(cx5, cy5, color=palette.border, linewidth=1.0)
-    ax_top.plot(cx15, cy15, color=palette.border, linestyle=":", linewidth=1.0)
-    if show_vacuum_reference:
+    if mode == "7.3":
+        cx5, cy5 = circle_points(tgt.x, tgt.y, 5.0)
+        cx15, cy15 = circle_points(tgt.x, tgt.y, 15.0)
+        ax_top.plot(cx5, cy5, color=palette.border, linewidth=1.0)
+        ax_top.plot(cx15, cy15, color=palette.border, linestyle=":", linewidth=1.0)
+    if show_vac:
         ax_top.plot(vac.x, vac.y, linestyle="--", color=palette.reference, linewidth=1.5, label="Sürtünmesiz")
     ax_top.plot(act.x, act.y, color=palette.accent, linewidth=2.4, label="Yük İzi")
     ax_top.scatter([rel.x], [rel.y], color=palette.primary, marker="D", s=38, zorder=5, label="Bırakma")
-    ax_top.scatter([tgt.x], [tgt.y], color=palette.accent, marker="x", s=50, zorder=5, label="Hedef")
+    ax_top.scatter([tgt.x], [tgt.y], color=palette.accent, marker="x", s=50, zorder=5, label=impact_label)
     ax_top.set_xlim(x_min, x_max)
     ax_top.set_ylim(y_min, y_max)
     ax_top.set_aspect("equal", adjustable="box")

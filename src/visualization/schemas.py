@@ -44,6 +44,9 @@ class SimulationInputs:
     target_y_m: float
     gravity_mps2: float = 9.81
     air_density_kgm3: float = 1.225
+    flight_path_angle_deg: float = 0.0
+    use_isa: bool = False
+    wind_shear_coeff: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -91,3 +94,4 @@ class DropScenarioView:
     release_solution: ReleaseSolutionView
     drift_from_vacuum_m: float
     is_demo_mode: bool = True
+    scenario_mode: str = "7.3"

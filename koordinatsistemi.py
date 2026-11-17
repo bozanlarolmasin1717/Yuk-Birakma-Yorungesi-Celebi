@@ -1,9 +1,7 @@
 import math
 from dataclasses import dataclass
-from typing import Callable, Optional,Tuple
-import matplotlib.pyplot as plt
+from typing import Optional
 import numpy as np
-from scipy.optimize import brentq,root
 
 #ENU= 
 # +x=east(doğu) 
@@ -47,7 +45,7 @@ class environmentParameters:
             return self.rho_sea_level
 
         altitude= max(0.0,min(z,11000.0))
-        temp=(288.15-0.065* altitude)/288.15
+        temp=(288.15-0.0065* altitude)/288.15
         return self.rho_sea_level*(temp**4.25588)
 
     def wind_vector(self, z:float=0.0):
@@ -74,16 +72,17 @@ class UavState:
             raise ValueError("Position vector must be three element array.")
         if self.speed < 0:
             raise ValueError("Uav speed cannot be negative.")
-#yönelim ve uçuş yolu açılarına göre hesaplar.
-@property
-def initial_velocity(self):
-    psi=math.radians(self.heading)
-    gamma= math.radians(self.flight_path_angle)
-    horizontal_speed= self.speed * math.cos(gamma)
-    vx0=horizontal_speed * math.sin(psi)
-    vy0=horizontal_speed * math.cos(psi)
-    vz0=self.speed * math.sin(gamma)
-    return np.array ([vx0,vy0,vz0], dtype=float )
+
+     #yönelim ve uçuş yolu açılarına göre hesaplar.
+     @property
+     def initial_velocity(self):
+        psi=math.radians(self.heading)
+        gamma= math.radians(self.flight_path_angle)
+        horizontal_speed= self.speed * math.cos(gamma)
+        vx0=horizontal_speed * math.sin(psi)
+        vy0=horizontal_speed * math.cos(psi)
+        vz0=self.speed * math.sin(gamma)
+        return np.array ([vx0,vy0,vz0], dtype=float )
 
 #ileri balistik simülasyonunun çıktıları için
 @dataclass

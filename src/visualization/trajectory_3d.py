@@ -23,9 +23,16 @@ def _trajectory_hover_text(series: TrajectorySeries) -> list[str]:
 def build_3d_figure(
     scenario: DropScenarioView,
     palette: ThemePalette,
-    show_vacuum_reference: bool = False,
+    show_vacuum_reference: bool | None = None,
 ) -> go.Figure:
-    """3B ENU uzayında yörünge, bırakma noktası ve hedefi çizer."""
+    """3B ENU uzayında yörünge, bırakma noktası ve hedef/düşüş noktasını çizer."""
+    show_vac = (scenario.scenario_mode == "7.2") if show_vacuum_reference is None else show_vacuum_reference
+    impact_label = (
+        "Hedef"
+        if scenario.scenario_mode == "7.3"
+        else ("7.2 Düşüş" if scenario.scenario_mode == "7.2" else "7.1 Düşüş")
+    )
+
     fig = go.Figure()
     vac = scenario.vacuum_trajectory
     act = scenario.actual_trajectory
@@ -46,7 +53,7 @@ def build_3d_figure(
     )
 
     # İsteğe bağlı sürtünmesiz (7.1) referans eğrisi
-    if show_vacuum_reference:
+    if show_vac:
         fig.add_trace(
             go.Scatter3d(
                 x=vac.x,
@@ -67,7 +74,7 @@ def build_3d_figure(
             y=act.y,
             z=act.z,
             mode="lines",
-            name="Yük Yörüngesi",
+            name=act.label,
             line=dict(color=palette.accent, width=5),
             text=_trajectory_hover_text(act),
             hoverinfo="text",
@@ -121,7 +128,7 @@ def build_3d_figure(
         )
     )
 
-    if show_vacuum_reference:
+    if show_vac:
         fig.add_trace(
             go.Scatter3d(
                 x=[vac.impact_point.x],
@@ -132,7 +139,7 @@ def build_3d_figure(
                 showlegend=False,
                 marker=dict(size=6, color=palette.reference, symbol="circle-open", line=dict(width=2)),
                 hovertemplate=(
-                    f"<b>Sürtünmesiz Düşüş Noktası</b><br>"
+                    f"<b>7.1 Vakum Düşüş Noktası</b><br>"
                     f"X: {vac.impact_point.x:.1f} m, Y: {vac.impact_point.y:.1f} m<extra></extra>"
                 ),
             )
@@ -144,11 +151,11 @@ def build_3d_figure(
             y=[tgt.y],
             z=[0.0],
             mode="markers",
-            name="Hedef",
+            name=impact_label,
             showlegend=False,
             marker=dict(size=8, color=palette.accent, symbol="x"),
             hovertemplate=(
-                f"<b>Hedef Noktası</b><br>"
+                f"<b>{impact_label}</b><br>"
                 f"X: {tgt.x:.1f} m, Y: {tgt.y:.1f} m<extra></extra>"
             ),
         )
@@ -163,7 +170,7 @@ def build_3d_figure(
     )
 
     (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
-        vac if show_vacuum_reference else act,
+        vac if show_vac else act,
         act,
         tgt,
     )

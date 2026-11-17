@@ -72,9 +72,9 @@ RK4 sayısal integrasyon yöntemi ile yükün yörüngesini belirtir. z<= z_grou
 interpolasyon ile kesin çarpışma koordinatını ve uçuş süresini hesaplar.
 """
 def simulate_trajectory(
-        uav=UavState,
-        payload= payloadParameters,
-        env=environmentParameters,
+        uav: UavState,
+        payload: payloadParameters,
+        env: environmentParameters,
         dt: float=0.01,
         z_ground:float=0.0,
         record_trajectory:bool=True,

@@ -1,7 +1,7 @@
 """HTML5 Canvas tabanlı senkronize canlı yük bırakma simülatörü."""
 
 import json
-import streamlit.components.v1 as components
+import streamlit as st
 from src.ui.theme import (
     FONT_BODY,
     FONT_HEADING,
@@ -43,9 +43,12 @@ def _serialize_series(
 def build_simulator_html(
     scenario: DropScenarioView,
     palette: ThemePalette,
-    show_vacuum_reference: bool = False,
+    show_vacuum_reference: bool | None = None,
 ) -> str:
     """Canlı simülasyon bileşeninin saf HTML/CSS/JS çıktısını üretir."""
+    mode = scenario.scenario_mode
+    show_vac = (mode == "7.2") if show_vacuum_reference is None else show_vacuum_reference
+
     rel = scenario.release_solution.release_point
     tgt = scenario.release_solution.target_point
     vac = scenario.vacuum_trajectory
@@ -55,9 +58,51 @@ def build_simulator_html(
 
     tgt_s = project_along_heading((tgt.x,), (tgt.y,), rel, heading_deg)[0]
     vac_s = project_along_heading(vac.x, vac.y, rel, heading_deg)
-    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(vac, act, tgt, padding_ratio=0.18)
+    (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
+        vac if show_vac else act,
+        act,
+        tgt,
+        padding_ratio=0.18,
+    )
+
+    if mode == "7.1":
+        side_legend = (
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Vakum Yörüngesi (7.1)</span>'
+        )
+        top_legend = (
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.primary};"></span>Bırakma (0, 0)</span>'
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Düşüş İzi</span>'
+        )
+        dist_label = "Yatay Mesafe"
+        impact_marker_label = "7.1 Düşüş"
+        impact_status = "Yere Ulaştı"
+    elif mode == "7.2":
+        side_legend = (
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Cd + Rüzgar (7.2)</span>'
+            f'<span class="leg-item"><span class="leg-line" style="border-top:2px dashed {palette.reference};"></span>Sürtünmesiz (7.1)</span>'
+        )
+        top_legend = (
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.wind_color};"></span>Rüzgar</span>'
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>7.2 İzi</span>'
+        )
+        dist_label = "7.1'den Sapma"
+        impact_marker_label = "7.2 Düşüş"
+        impact_status = "Yere Ulaştı"
+    else:
+        side_legend = (
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Yük Yörüngesi</span>'
+            f'<span class="leg-item"><span class="leg-line" style="border-top:2px dashed {palette.primary};"></span>Bırakma Noktası</span>'
+        )
+        top_legend = (
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.wind_color};"></span>Rüzgar</span>'
+            f'<span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Yük İzi</span>'
+        )
+        dist_label = "Hedefe Kalan Mesafe"
+        impact_marker_label = "Hedef"
+        impact_status = "Hedefe Ulaştı"
 
     payload = {
+        "scenarioMode": mode,
         "actual": _serialize_series(act, rel.x, rel.y, rel.z, heading_deg),
         "vacuum": _serialize_series(vac, rel.x, rel.y, rel.z, heading_deg),
         "release": {"x": rel.x, "y": rel.y, "z": rel.z, "s": 0.0},
@@ -71,14 +116,17 @@ def build_simulator_html(
             "altitude": scenario.inputs.release_altitude_m,
         },
         "wind": {
-            "wx": scenario.wind_vector_mps[0],
-            "wy": scenario.wind_vector_mps[1],
-            "speed": scenario.inputs.wind_speed_mps,
+            "wx": 0.0 if mode == "7.1" else scenario.wind_vector_mps[0],
+            "wy": 0.0 if mode == "7.1" else scenario.wind_vector_mps[1],
+            "speed": 0.0 if mode == "7.1" else scenario.inputs.wind_speed_mps,
         },
         "bounds2d": {"x": [x_min, x_max], "y": [y_min, y_max]},
         "leadLabel": format_lead_distance(scenario.release_solution.lead_distance_m),
-        "showVacuum": show_vacuum_reference,
-        "tFlight": act.flight_time if not show_vacuum_reference else max(act.flight_time, vac.flight_time),
+        "showLeadArrow": mode == "7.3",
+        "impactLabel": impact_marker_label,
+        "impactStatus": impact_status,
+        "showVacuum": show_vac,
+        "tFlight": act.flight_time if not show_vac else max(act.flight_time, vac.flight_time),
         "tActualImpact": act.flight_time,
         "palette": {
             "bgPage": palette.bg_page,
@@ -321,7 +369,7 @@ def build_simulator_html(
         <div id="valSpeed" class="tele-val">0.0 m/s</div>
       </div>
       <div class="tele-cell">
-        <div class="tele-label">Hedefe Kalan Mesafe</div>
+        <div class="tele-label">{dist_label}</div>
         <div id="valDist" class="tele-val">0.0 m</div>
       </div>
     </div>
@@ -330,20 +378,14 @@ def build_simulator_html(
       <div class="canvas-card">
         <div class="canvas-head">
           <span class="canvas-title">Yandan Görünüm (Yükseklik – Mesafe)</span>
-          <div class="canvas-legend">
-            <span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Yük Yörüngesi</span>
-            <span class="leg-item"><span class="leg-line" style="border-top:2px dashed {palette.primary};"></span>Bırakma Noktası</span>
-          </div>
+          <div class="canvas-legend">{side_legend}</div>
         </div>
         <canvas id="sideCanvas"></canvas>
       </div>
       <div class="canvas-card">
         <div class="canvas-head">
           <span class="canvas-title">Üstten Görünüm (Kuşbakışı Radar)</span>
-          <div class="canvas-legend">
-            <span class="leg-item"><span class="leg-line" style="background:{palette.wind_color};"></span>Rüzgar</span>
-            <span class="leg-item"><span class="leg-line" style="background:{palette.accent};"></span>Yük İzi</span>
-          </div>
+          <div class="canvas-legend">{top_legend}</div>
         </div>
         <canvas id="topCanvas"></canvas>
       </div>
@@ -621,34 +663,36 @@ def build_simulator_html(
       ctx.fillText("Bırakma", xRel, yGround + 16);
       ctx.fillStyle = P.accent;
       ctx.font = "600 11px IBM Plex Sans, sans-serif";
-      ctx.fillText("Hedef", xTgt, yGround + 16);
+      ctx.fillText(DATA.impactLabel, xTgt, yGround + 16);
 
       if (DATA.showVacuum) {{
         const xVacEnd = toX(DATA.vacImpact.s);
         if (Math.abs(xVacEnd - xTgt) > 54 && Math.abs(xVacEnd - xRel) > 54) {{
           ctx.fillStyle = P.textSecondary;
           ctx.font = "11px IBM Plex Sans, sans-serif";
-          ctx.fillText("Sürtünmesiz", xVacEnd, yGround + 16);
+          ctx.fillText("7.1 Vakum", xVacEnd, yGround + 16);
         }}
       }}
 
-      if (Math.abs(xTgt - xRel) > 36) {{
-        const yDim = yGround - 14;
-        ctx.save();
-        ctx.strokeStyle = P.primary;
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.moveTo(xRel, yDim);
-        ctx.lineTo(xTgt, yDim);
-        ctx.stroke();
-        ctx.fillStyle = P.primary;
-        ctx.font = "600 11px IBM Plex Sans, sans-serif";
-        ctx.fillText(DATA.leadLabel, 0.5 * (xRel + xTgt), yDim - 6);
-        ctx.restore();
-      }} else {{
-        ctx.fillStyle = P.primary;
-        ctx.font = "600 11px IBM Plex Sans, sans-serif";
-        ctx.fillText(DATA.leadLabel, 0.5 * (xRel + xTgt), yGround + 29);
+      if (DATA.showLeadArrow) {{
+        if (Math.abs(xTgt - xRel) > 36) {{
+          const yDim = yGround - 14;
+          ctx.save();
+          ctx.strokeStyle = P.primary;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(xRel, yDim);
+          ctx.lineTo(xTgt, yDim);
+          ctx.stroke();
+          ctx.fillStyle = P.primary;
+          ctx.font = "600 11px IBM Plex Sans, sans-serif";
+          ctx.fillText(DATA.leadLabel, 0.5 * (xRel + xTgt), yDim - 6);
+          ctx.restore();
+        }} else {{
+          ctx.fillStyle = P.primary;
+          ctx.font = "600 11px IBM Plex Sans, sans-serif";
+          ctx.fillText(DATA.leadLabel, 0.5 * (xRel + xTgt), yGround + 29);
+        }}
       }}
 
       // Hareketli İHA ve yükler
@@ -843,15 +887,26 @@ def build_simulator_html(
       ctx.textAlign = "left";
       ctx.fillText("Kuzey (+Y)", ox + 6, oy + 14);
       ctx.textAlign = "right";
-      ctx.fillText("Rüzgar: " + DATA.wind.speed.toFixed(1) + " m/s", ox + size - 6, oy + size - 8);
+      ctx.fillText(
+        DATA.scenarioMode === "7.1" ? "Rüzgarsız (7.1)" : "Rüzgar: " + DATA.wind.speed.toFixed(1) + " m/s",
+        ox + size - 6,
+        oy + size - 8
+      );
     }}
 
-    function updateTelemetry(actState) {{
+    function updateTelemetry(actState, vacState) {{
       valTime.textContent = (simTime >= 0 ? "+" : "") + simTime.toFixed(2) + " s";
       valAlt.textContent = actState.z.toFixed(1) + " m";
       valSpeed.textContent = actState.speed.toFixed(1) + " m/s";
-      const distToTarget = Math.hypot(DATA.target.x - actState.x, DATA.target.y - actState.y);
-      valDist.textContent = distToTarget.toFixed(1) + " m";
+      let distVal = 0;
+      if (DATA.scenarioMode === "7.1") {{
+        distVal = Math.hypot(actState.x - DATA.release.x, actState.y - DATA.release.y);
+      }} else if (DATA.scenarioMode === "7.2") {{
+        distVal = Math.hypot(actState.x - vacState.x, actState.y - vacState.y);
+      }} else {{
+        distVal = Math.hypot(DATA.target.x - actState.x, DATA.target.y - actState.y);
+      }}
+      valDist.textContent = distVal.toFixed(1) + " m";
 
       statusDot.className = "status-dot";
       if (simTime < 0) {{
@@ -861,14 +916,14 @@ def build_simulator_html(
         statusText.textContent = "Yük Bırakıldı · Serbest Düşüş";
       }} else {{
         statusDot.classList.add("hit");
-        statusText.textContent = "Hedefe Ulaştı";
+        statusText.textContent = DATA.impactStatus;
       }}
     }}
 
     function renderFrame() {{
       const actState = sampleSeries(DATA.actual, simTime);
       const vacState = sampleSeries(DATA.vacuum, simTime);
-      updateTelemetry(actState);
+      updateTelemetry(actState, vacState);
       drawSideCanvas(actState, vacState);
       drawTopCanvas(actState, vacState);
       slider.value = String(Math.min(Math.max(simTime, PRE_ROLL), T_MAX).toFixed(2));
@@ -929,8 +984,8 @@ def build_simulator_html(
 def render_live_simulator(
     scenario: DropScenarioView,
     palette: ThemePalette,
-    show_vacuum_reference: bool = False,
+    show_vacuum_reference: bool | None = None,
 ) -> None:
     """Streamlit içine senkronize HTML5 canlı simülatör bileşenini yerleştirir."""
     html_doc = build_simulator_html(scenario, palette, show_vacuum_reference=show_vacuum_reference)
-    components.html(html_doc, height=540, scrolling=True)
+    st.iframe(html_doc, height=540, alt="Çelebi canlı yörünge simülatörü")

@@ -17,6 +17,7 @@ class ForwardDropResult:
     z: tuple[float, ...] = ()
     t: tuple[float, ...] = ()
     speed: tuple[float, ...] = ()
+    impact_speed_mps: float | None = None
 
 
 ForwardSimulatorFn = Callable[[float, float, float], ForwardDropResult]
@@ -69,6 +70,8 @@ def adapt_friend_simulator(
 
         result = simulate_fn(uav_state, payload, environment)
         imp = result.impact_point
+        imp_vel = getattr(result, "impact_velocity", None)
+        impact_speed = float(np.linalg.norm(imp_vel)) if imp_vel is not None else None
         traj = getattr(result, "trajectory", None)
 
         xs: tuple[float, ...] = ()
@@ -87,6 +90,7 @@ def adapt_friend_simulator(
             x=xs,
             y=ys,
             z=zs,
+            impact_speed_mps=impact_speed,
         )
 
     return _run_forward

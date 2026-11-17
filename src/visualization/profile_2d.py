@@ -9,9 +9,13 @@ from src.visualization.schemas import DropScenarioView
 def build_side_profile_figure(
     scenario: DropScenarioView,
     palette: ThemePalette,
-    show_vacuum_reference: bool = False,
+    show_vacuum_reference: bool | None = None,
 ) -> go.Figure:
-    """İHA uçuş ekseni boyunca yandan düşüş profilini ve kaç metre önce bırakıldığını çizer."""
+    """İHA uçuş ekseni boyunca yandan düşüş profilini çizer."""
+    mode = scenario.scenario_mode
+    show_vac = (mode == "7.2") if show_vacuum_reference is None else show_vacuum_reference
+    impact_label = "Hedef" if mode == "7.3" else ("7.2 Düşüş" if mode == "7.2" else "7.1 Düşüş")
+
     fig = go.Figure()
     rel = scenario.release_solution.release_point
     tgt = scenario.release_solution.target_point
@@ -38,13 +42,13 @@ def build_side_profile_figure(
         )
     )
 
-    if show_vacuum_reference:
+    if show_vac:
         fig.add_trace(
             go.Scatter(
                 x=vac_s,
                 y=scenario.vacuum_trajectory.z,
                 mode="lines",
-                name="Sürtünmesiz (Vakum)",
+                name="Sürtünmesiz (7.1)",
                 line=dict(color=palette.reference, width=2.5, dash="dash"),
                 hovertemplate="Rota Mesafesi: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra>Sürtünmesiz</extra>",
             )
@@ -56,7 +60,7 @@ def build_side_profile_figure(
             x=act_s,
             y=scenario.actual_trajectory.z,
             mode="lines",
-            name="Yük Yörüngesi",
+            name=scenario.actual_trajectory.label,
             line=dict(color=palette.accent, width=3.5),
             hovertemplate="Rota Mesafesi: %{x:.1f} m<br>İrtifa: %{y:.1f} m<extra>Yük Yörüngesi</extra>",
         )
@@ -72,9 +76,9 @@ def build_side_profile_figure(
         line=dict(color=palette.primary, width=1.5, dash="dash"),
     )
 
-    if show_vacuum_reference:
+    if show_vac:
         vac_gap_s = abs(vac_s[-1] - tgt_s)
-        vac_text = "" if vac_gap_s < 3.0 else "Sürtünmesiz Düşüş"
+        vac_text = "" if vac_gap_s < 3.0 else "7.1 Vakum"
         marker_positions = (
             ["top right", "top left", "top right"]
             if vac_s[-1] >= tgt_s
@@ -85,7 +89,7 @@ def build_side_profile_figure(
                 x=[0.0, tgt_s, vac_s[-1]],
                 y=[rel.z, 0.0, 0.0],
                 mode="markers+text",
-                text=["Bırakma", "Hedef", vac_text],
+                text=["Bırakma", impact_label, vac_text],
                 textposition=marker_positions,
                 marker=dict(
                     size=[11, 11, 9],
@@ -102,7 +106,7 @@ def build_side_profile_figure(
                 x=[0.0, tgt_s],
                 y=[rel.z, 0.0],
                 mode="markers+text",
-                text=["Bırakma", "Hedef"],
+                text=["Bırakma", impact_label],
                 textposition=["top right", "top center"],
                 marker=dict(
                     size=[11, 11],
@@ -114,35 +118,36 @@ def build_side_profile_figure(
             )
         )
 
-    # 7.3 Bırakma mesafesi ölçüm oku (zemin seviyesinin hemen altında/üstünde)
-    lead_y = max(rel.z * 0.08, 4.0)
-    fig.add_annotation(
-        x=tgt_s,
-        y=lead_y,
-        ax=0.0,
-        ay=lead_y,
-        xref="x",
-        yref="y",
-        axref="x",
-        ayref="y",
-        showarrow=True,
-        arrowhead=2,
-        arrowsize=1.1,
-        arrowwidth=2,
-        arrowcolor=palette.primary,
-    )
-    fig.add_annotation(
-        x=0.5 * tgt_s,
-        y=lead_y,
-        text=format_lead_distance(scenario.release_solution.lead_distance_m),
-        showarrow=False,
-        yshift=14,
-        font=dict(size=12, color=palette.primary),
-        bgcolor=palette.bg_surface,
-        bordercolor=palette.border,
-        borderwidth=1,
-        borderpad=4,
-    )
+    # Yalnızca 7.3 modunda bırakma mesafesi ölçüm oku gösterilir
+    if mode == "7.3":
+        lead_y = max(rel.z * 0.08, 4.0)
+        fig.add_annotation(
+            x=tgt_s,
+            y=lead_y,
+            ax=0.0,
+            ay=lead_y,
+            xref="x",
+            yref="y",
+            axref="x",
+            ayref="y",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1.1,
+            arrowwidth=2,
+            arrowcolor=palette.primary,
+        )
+        fig.add_annotation(
+            x=0.5 * tgt_s,
+            y=lead_y,
+            text=format_lead_distance(scenario.release_solution.lead_distance_m),
+            showarrow=False,
+            yshift=14,
+            font=dict(size=12, color=palette.primary),
+            bgcolor=palette.bg_surface,
+            bordercolor=palette.border,
+            borderwidth=1,
+            borderpad=4,
+        )
 
     fig.update_layout(
         template=palette.plotly_template,

@@ -9,9 +9,14 @@ from src.visualization.schemas import DropScenarioView
 def build_topdown_figure(
     scenario: DropScenarioView,
     palette: ThemePalette,
-    show_vacuum_reference: bool = False,
+    show_vacuum_reference: bool | None = None,
 ) -> go.Figure:
-    """Kuşbakışı ENU düzleminde rota, rüzgar ve hedef halkalarını çizer."""
+    """Kuşbakışı ENU düzleminde rota, rüzgar ve düşüş/hedef halkalarını çizer."""
+    mode = scenario.scenario_mode
+    show_vac = (mode == "7.2") if show_vacuum_reference is None else show_vacuum_reference
+    is_targeting = mode == "7.3"
+    impact_label = "Hedef" if is_targeting else ("7.2 Düşüş" if mode == "7.2" else "7.1 Düşüş")
+
     fig = go.Figure()
     vac = scenario.vacuum_trajectory
     act = scenario.actual_trajectory
@@ -19,25 +24,26 @@ def build_topdown_figure(
     tgt = scenario.release_solution.target_point
 
     (x_min, x_max), (y_min, y_max) = compute_axis_bounds(
-        vac if show_vacuum_reference else act,
+        vac if show_vac else act,
         act,
         tgt,
     )
 
-    # Hedef çevresi referans halkaları (5 m ve 15 m)
-    for radius, dash, label in [(5.0, "solid", "5 m Yarıçap"), (15.0, "dot", "15 m Yarıçap")]:
-        cx, cy = circle_points(tgt.x, tgt.y, radius)
-        fig.add_trace(
-            go.Scatter(
-                x=cx,
-                y=cy,
-                mode="lines",
-                name=label,
-                showlegend=False,
-                line=dict(color=palette.border, width=1.4, dash=dash),
-                hoverinfo="skip",
+    # Hedef çevresi referans halkaları (yalnızca 7.3)
+    if is_targeting:
+        for radius, dash, label in [(5.0, "solid", "5 m Yarıçap"), (15.0, "dot", "15 m Yarıçap")]:
+            cx, cy = circle_points(tgt.x, tgt.y, radius)
+            fig.add_trace(
+                go.Scatter(
+                    x=cx,
+                    y=cy,
+                    mode="lines",
+                    name=label,
+                    showlegend=False,
+                    line=dict(color=palette.border, width=1.4, dash=dash),
+                    hoverinfo="skip",
+                )
             )
-        )
 
     # İHA yaklaşma hattı
     fig.add_trace(
@@ -50,13 +56,13 @@ def build_topdown_figure(
         )
     )
 
-    if show_vacuum_reference:
+    if show_vac:
         fig.add_trace(
             go.Scatter(
                 x=vac.x,
                 y=vac.y,
                 mode="lines",
-                name="Sürtünmesiz (Vakum)",
+                name="Sürtünmesiz (7.1)",
                 line=dict(color=palette.reference, width=2.2, dash="dash"),
             )
         )
@@ -67,13 +73,13 @@ def build_topdown_figure(
             x=act.x,
             y=act.y,
             mode="lines",
-            name="Yük İzi",
+            name=act.label,
             line=dict(color=palette.accent, width=3.5),
         )
     )
 
-    if show_vacuum_reference:
-        vac_label = "" if scenario.drift_from_vacuum_m < 3.0 else "Sürtünmesiz"
+    if show_vac:
+        vac_label = "" if scenario.drift_from_vacuum_m < 3.0 else "7.1 Vakum"
         tgt_pos = "top center" if tgt.y >= vac.impact_point.y else "bottom center"
         vac_pos = "bottom center" if vac.impact_point.y <= tgt.y else "top center"
         fig.add_trace(
@@ -81,7 +87,7 @@ def build_topdown_figure(
                 x=[rel.x, vac.impact_point.x, tgt.x],
                 y=[rel.y, vac.impact_point.y, tgt.y],
                 mode="markers+text",
-                text=["Bırakma", vac_label, "Hedef"],
+                text=["Bırakma", vac_label, impact_label],
                 textposition=["top left", vac_pos, tgt_pos],
                 marker=dict(
                     size=[11, 9, 12],
@@ -98,7 +104,7 @@ def build_topdown_figure(
                 x=[rel.x, tgt.x],
                 y=[rel.y, tgt.y],
                 mode="markers+text",
-                text=["Bırakma", "Hedef"],
+                text=["Bırakma", impact_label],
                 textposition=["top left", "top center"],
                 marker=dict(
                     size=[11, 12],
@@ -110,9 +116,9 @@ def build_topdown_figure(
             )
         )
 
-    # Rüzgar yönü ve şiddeti oku (sol üst köşede temiz gösterge)
+    # Rüzgar yönü ve şiddeti oku (7.1'de rüzgarsız)
     wx, wy = scenario.wind_vector_mps
-    w_speed = scenario.inputs.wind_speed_mps
+    w_speed = 0.0 if mode == "7.1" else scenario.inputs.wind_speed_mps
     span = x_max - x_min
     anchor_x = x_min + span * 0.14
     anchor_y = y_max - span * 0.14
@@ -137,7 +143,7 @@ def build_topdown_figure(
     fig.add_annotation(
         x=anchor_x,
         y=anchor_y - span * 0.06,
-        text=f"Rüzgar: {w_speed:.1f} m/s",
+        text="Rüzgarsız (7.1)" if mode == "7.1" else f"Rüzgar: {w_speed:.1f} m/s",
         showarrow=False,
         font=dict(size=11, color=palette.wind_color),
         bgcolor=palette.bg_surface,
